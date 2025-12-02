@@ -17,7 +17,7 @@ type Repository interface {
 	UpdateCalendarItem(item *CalendarItem) error
 	DeleteCalendarItem(id uint) error
 	ListCalendarItems(userID *uint, startTime, endTime *time.Time, itemType *CalendarItemType, offset, limit int) ([]*CalendarItem, int64, error)
-	SearchCalendarItemsByKeyword(userID *uint, fields []string, keyword string) ([]*CalendarItem, error)
+	SearchCalendarItemsByFieldKeywords(userID *uint, fieldKeywords map[string]string) ([]*CalendarItem, error)
 
 	// Valarm 相关方法
 	CreateValarm(alarm *Valarm) error
@@ -116,113 +116,79 @@ func escapeSQLString(s string) string {
 	return strings.ReplaceAll(s, "'", "''")
 }
 
+// fieldColumnMap 字段名到 SQL 列名的映射
+// 对于 JSONB 字段，列名包含 ::text 转换
+var fieldColumnMap = map[string]string{
+	"summary":     "summary",
+	"description": "description",
+	"location":    "location",
+	"organizer":   "organizer",
+	"comment":     "comment",
+	"contact":     "contact",
+	"categories":  "categories::text",
+	"resources":   "resources::text",
+}
+
+// getFieldColumn 获取字段对应的 SQL 列名
+func getFieldColumn(field string) (string, bool) {
+	column, ok := fieldColumnMap[field]
+	return column, ok
+}
+
 // getFieldMatchScoreSQL 获取字段匹配分数的 SQL 表达式
 func getFieldMatchScoreSQL(field string, keywordExact, keywordPrefix string) string {
-	switch field {
-	case "summary":
-		return fmt.Sprintf(`CASE 
-			WHEN summary ILIKE '%s' THEN 3
-			WHEN summary ILIKE '%s' THEN 2
-			ELSE 1
-		END`, keywordExact, keywordPrefix)
-	case "description":
-		return fmt.Sprintf(`CASE 
-			WHEN description ILIKE '%s' THEN 3
-			WHEN description ILIKE '%s' THEN 2
-			ELSE 1
-		END`, keywordExact, keywordPrefix)
-	case "location":
-		return fmt.Sprintf(`CASE 
-			WHEN location ILIKE '%s' THEN 3
-			WHEN location ILIKE '%s' THEN 2
-			ELSE 1
-		END`, keywordExact, keywordPrefix)
-	case "organizer":
-		return fmt.Sprintf(`CASE 
-			WHEN organizer ILIKE '%s' THEN 3
-			WHEN organizer ILIKE '%s' THEN 2
-			ELSE 1
-		END`, keywordExact, keywordPrefix)
-	case "comment":
-		return fmt.Sprintf(`CASE 
-			WHEN comment ILIKE '%s' THEN 3
-			WHEN comment ILIKE '%s' THEN 2
-			ELSE 1
-		END`, keywordExact, keywordPrefix)
-	case "contact":
-		return fmt.Sprintf(`CASE 
-			WHEN contact ILIKE '%s' THEN 3
-			WHEN contact ILIKE '%s' THEN 2
-			ELSE 1
-		END`, keywordExact, keywordPrefix)
-	case "categories":
-		return fmt.Sprintf(`CASE 
-			WHEN categories::text ILIKE '%s' THEN 3
-			WHEN categories::text ILIKE '%s' THEN 2
-			ELSE 1
-		END`, keywordExact, keywordPrefix)
-	case "resources":
-		return fmt.Sprintf(`CASE 
-			WHEN resources::text ILIKE '%s' THEN 3
-			WHEN resources::text ILIKE '%s' THEN 2
-			ELSE 1
-		END`, keywordExact, keywordPrefix)
-	default:
+	column, ok := getFieldColumn(field)
+	if !ok {
 		return "1"
 	}
+
+	return fmt.Sprintf(`CASE 
+		WHEN %s ILIKE '%s' THEN 3
+		WHEN %s ILIKE '%s' THEN 2
+		ELSE 1
+	END`, column, keywordExact, column, keywordPrefix)
 }
 
 // isValidSearchField 验证搜索字段是否有效
 func isValidSearchField(field string) bool {
-	switch field {
-	case "summary", "description", "location", "organizer",
-		"comment", "contact", "categories", "resources":
-		return true
-	default:
-		return false
-	}
+	_, ok := fieldColumnMap[field]
+	return ok
 }
 
-// SearchCalendarItemsByKeyword 根据关键字模糊搜索日历项（最多返回20条，按匹配程度排序）
-// 支持多个字段的 AND 搜索，所有指定字段都必须匹配关键字
-func (r *repository) SearchCalendarItemsByKeyword(userID *uint, fields []string, keyword string) ([]*CalendarItem, error) {
-	if keyword == "" {
-		return nil, fmt.Errorf("关键字不能为空")
-	}
-
-	if len(fields) == 0 {
+// SearchCalendarItemsByFieldKeywords 根据字段关键字映射搜索日历项（最多返回20条，按匹配程度排序）
+// 支持多个字段的 AND 搜索，每个字段匹配对应的关键字
+func (r *repository) SearchCalendarItemsByFieldKeywords(userID *uint, fieldKeywords map[string]string) ([]*CalendarItem, error) {
+	if len(fieldKeywords) == 0 {
 		return nil, fmt.Errorf("至少需要指定一个搜索字段")
 	}
 
-	// 验证所有字段是否有效
-	validFields := make([]string, 0, len(fields))
-	for _, field := range fields {
+	// 验证所有字段是否有效，并去重
+	validFieldKeywords := make(map[string]string)
+	invalidFields := make([]string, 0)
+
+	for field, keyword := range fieldKeywords {
 		if !isValidSearchField(field) {
-			return nil, fmt.Errorf("不支持的搜索字段: %s", field)
+			invalidFields = append(invalidFields, field)
+			continue
 		}
-		// 去重：避免重复字段
-		duplicate := false
-		for _, vf := range validFields {
-			if vf == field {
-				duplicate = true
-				break
-			}
+
+		if keyword == "" {
+			return nil, fmt.Errorf("关键字不能为空")
 		}
-		if !duplicate {
-			validFields = append(validFields, field)
-		}
+		validFieldKeywords[field] = keyword
 	}
 
-	if len(validFields) == 0 {
+	// 如果有无效字段，返回错误
+	if len(invalidFields) > 0 {
+		return nil, fmt.Errorf("不支持的搜索字段: %v", invalidFields)
+	}
+
+	// 验证去重后是否还有有效字段
+	if len(validFieldKeywords) == 0 {
 		return nil, fmt.Errorf("没有有效的搜索字段")
 	}
 
 	var items []*CalendarItem
-	keywordEscaped := escapeSQLString(keyword)
-	keywordPattern := "%" + keywordEscaped + "%"
-	keywordExact := keywordEscaped
-	keywordPrefix := keywordEscaped + "%"
-
 	query := r.db.Model(&CalendarItem{})
 
 	// 过滤用户ID
@@ -230,35 +196,25 @@ func (r *repository) SearchCalendarItemsByKeyword(userID *uint, fields []string,
 		query = query.Where("user_id = ?", *userID)
 	}
 
-	// 构建 AND 条件：所有指定字段都必须匹配
-	// 使用 GORM 的参数化查询，每个字段都要匹配关键字
-	for _, field := range validFields {
-		switch field {
-		case "summary":
-			query = query.Where("summary ILIKE ?", keywordPattern)
-		case "description":
-			query = query.Where("description ILIKE ?", keywordPattern)
-		case "location":
-			query = query.Where("location ILIKE ?", keywordPattern)
-		case "organizer":
-			query = query.Where("organizer ILIKE ?", keywordPattern)
-		case "comment":
-			query = query.Where("comment ILIKE ?", keywordPattern)
-		case "contact":
-			query = query.Where("contact ILIKE ?", keywordPattern)
-		case "categories":
-			query = query.Where("categories::text ILIKE ?", keywordPattern)
-		case "resources":
-			query = query.Where("resources::text ILIKE ?", keywordPattern)
-		default:
+	// 构建 AND 条件：每个字段都必须匹配对应的关键字
+	for field, keyword := range validFieldKeywords {
+		column, ok := getFieldColumn(field)
+		if !ok {
 			// 理论上不会到达这里，因为已经验证过了，但为了安全起见保留
 			return nil, fmt.Errorf("不支持的搜索字段: %s", field)
 		}
+
+		keywordEscaped := escapeSQLString(keyword)
+		keywordPattern := "%" + keywordEscaped + "%"
+		query = query.Where(column+" ILIKE ?", keywordPattern)
 	}
 
 	// 构建排序：按所有字段的平均匹配程度排序
 	var scoreExpressions []string
-	for _, field := range validFields {
+	for field, keyword := range validFieldKeywords {
+		keywordEscaped := escapeSQLString(keyword)
+		keywordExact := keywordEscaped
+		keywordPrefix := keywordEscaped + "%"
 		scoreSQL := getFieldMatchScoreSQL(field, keywordExact, keywordPrefix)
 		if scoreSQL != "1" {
 			scoreExpressions = append(scoreExpressions, scoreSQL)
@@ -269,10 +225,13 @@ func (r *repository) SearchCalendarItemsByKeyword(userID *uint, fields []string,
 	if len(scoreExpressions) == 1 {
 		// 单个字段，直接使用其匹配分数
 		orderBy = fmt.Sprintf("%s DESC", scoreExpressions[0])
-	} else {
+	} else if len(scoreExpressions) > 1 {
 		// 多个字段，使用平均匹配分数
 		avgScore := fmt.Sprintf("(%s) / %d", strings.Join(scoreExpressions, " + "), len(scoreExpressions))
 		orderBy = fmt.Sprintf("%s DESC", avgScore)
+	} else {
+		// 如果没有有效的排序表达式，使用默认排序
+		orderBy = "created_at DESC"
 	}
 
 	// 添加排序

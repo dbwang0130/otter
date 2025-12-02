@@ -255,103 +255,81 @@ Content-Type: application/json
 
 ### 搜索日历项 - 单字段搜索（summary）
 # @ref login
-GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?fields=summary&keyword=会议
+GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?summary=会议
 Authorization: Bearer {{login.access_token}}
-Content-Type: application/json
 
 ### 搜索日历项 - 单字段搜索（description）
 # @ref login
-GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?fields=description&keyword=项目
+GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?description=项目
 Authorization: Bearer {{login.access_token}}
-Content-Type: application/json
 
 ### 搜索日历项 - 单字段搜索（location）
 # @ref login
-GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?fields=location&keyword=北京
+GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?location=北京
 Authorization: Bearer {{login.access_token}}
-Content-Type: application/json
 
-### 搜索日历项 - 多字段搜索（多个同名参数）
+### 搜索日历项 - 多字段搜索（每个字段相同关键字）
 # @ref login
-GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?fields=summary&fields=location&keyword=测试
+GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?summary=测试&location=测试
 Authorization: Bearer {{login.access_token}}
-Content-Type: application/json
 
-### 搜索日历项 - 多字段搜索（逗号分隔）
+### 搜索日历项 - 多字段搜索（每个字段不同关键字）
 # @ref login
-GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?fields=summary,location&keyword=测试
+GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?summary=团队&location=会议室
 Authorization: Bearer {{login.access_token}}
-Content-Type: application/json
 
 ### 搜索日历项 - 多字段搜索（summary, description, location）
 # @ref login
-GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?fields=summary&fields=description&fields=location&keyword=重要
+GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?summary=重要&description=重要&location=重要
 Authorization: Bearer {{login.access_token}}
-Content-Type: application/json
 
 ### 搜索日历项 - 搜索组织者
 # @ref login
-GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?fields=organizer&keyword=张三
+GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?organizer=张三
 Authorization: Bearer {{login.access_token}}
-Content-Type: application/json
 
 ### 搜索日历项 - 搜索分类（categories）
 # @ref login
-GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?fields=categories&keyword=工作
+GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?categories=工作
 Authorization: Bearer {{login.access_token}}
-Content-Type: application/json
 
 ### 搜索日历项 - 搜索资源（resources）
 # @ref login
-GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?fields=resources&keyword=会议室
+GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?resources=会议室
 Authorization: Bearer {{login.access_token}}
-Content-Type: application/json
 
 ### 搜索日历项 - 搜索备注（comment）
 # @ref login
-GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?fields=comment&keyword=备注
+GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?comment=备注
 Authorization: Bearer {{login.access_token}}
-Content-Type: application/json
 
 ### 搜索日历项 - 搜索联系人（contact）
 # @ref login
-GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?fields=contact&keyword=李四
+GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?contact=李四
 Authorization: Bearer {{login.access_token}}
-Content-Type: application/json
 
-### 搜索日历项 - 综合搜索（多个字段）
+### 搜索日历项 - 综合搜索（多个字段，不同关键字）
 # @ref login
-GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?fields=summary,description,location&keyword=项目
+GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?summary=项目&description=进度&location=北京
 Authorization: Bearer {{login.access_token}}
-Content-Type: application/json
 
-### 搜索日历项 - 错误：缺少 fields 参数
+### 搜索日历项 - 错误：缺少搜索参数
 # @ref login
-GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?keyword=测试
+GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search
 Authorization: Bearer {{login.access_token}}
-Content-Type: application/json
-
-### 搜索日历项 - 错误：缺少 keyword 参数
-# @ref login
-GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?fields=summary
-Authorization: Bearer {{login.access_token}}
-Content-Type: application/json
 
 ### 搜索日历项 - 错误：无效字段
 # @ref login
-GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?fields=invalid_field&keyword=测试
+GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?invalid_field=测试
 Authorization: Bearer {{login.access_token}}
-Content-Type: application/json
 
 ### 搜索日历项 - 错误：空关键字
 # @ref login
-GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?fields=summary&keyword=
+GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?summary=
 Authorization: Bearer {{login.access_token}}
-Content-Type: application/json
 
 ### 搜索日历项 - 未认证（缺少 token）
-GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?fields=summary&keyword=测试
-Content-Type: application/json
+GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?summary=测试
 
 ###############################################
 ### Calendar Items 模糊搜索测试
@@ -359,157 +337,131 @@ Content-Type: application/json
 
 ### 模糊搜索 - 部分匹配（关键字在中间）
 # @ref login
-GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?fields=summary&keyword=会议
+GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?summary=会议
 Authorization: Bearer {{login.access_token}}
-Content-Type: application/json
 
 ### 模糊搜索 - 开头匹配（关键字在开头）
 # @ref login
-GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?fields=summary&keyword=团队
+GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?summary=团队
 Authorization: Bearer {{login.access_token}}
-Content-Type: application/json
 
 ### 模糊搜索 - 完全匹配（精确匹配优先级最高）
 # @ref login
-GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?fields=summary&keyword=团队会议
+GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?summary=团队会议
 Authorization: Bearer {{login.access_token}}
-Content-Type: application/json
 
 ### 模糊搜索 - 大小写不敏感（英文）
 # @ref login
-GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?fields=summary&keyword=MEETING
+GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?summary=MEETING
 Authorization: Bearer {{login.access_token}}
-Content-Type: application/json
 
 ### 模糊搜索 - 大小写不敏感（混合大小写）
 # @ref login
-GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?fields=summary&keyword=MeEtInG
+GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?summary=MeEtInG
 Authorization: Bearer {{login.access_token}}
-Content-Type: application/json
 
 ### 模糊搜索 - 单个字符匹配
 # @ref login
-GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?fields=summary&keyword=会
+GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?summary=会
 Authorization: Bearer {{login.access_token}}
-Content-Type: application/json
 
 ### 模糊搜索 - 长关键字匹配
 # @ref login
-GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?fields=description&keyword=讨论项目进度和下一步计划
+GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?description=讨论项目进度和下一步计划
 Authorization: Bearer {{login.access_token}}
-Content-Type: application/json
 
 ### 模糊搜索 - 中文分词测试
 # @ref login
-GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?fields=summary&keyword=项目报告
+GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?summary=项目报告
 Authorization: Bearer {{login.access_token}}
-Content-Type: application/json
 
 ### 模糊搜索 - 特殊字符（空格）
 # @ref login
-GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?fields=summary&keyword=团队 会议
+GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?summary=团队 会议
 Authorization: Bearer {{login.access_token}}
-Content-Type: application/json
 
 ### 模糊搜索 - 数字匹配
 # @ref login
-GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?fields=summary&keyword=2024
+GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?summary=2024
 Authorization: Bearer {{login.access_token}}
-Content-Type: application/json
 
-### 模糊搜索 - 多字段模糊匹配（summary + description）
+### 模糊搜索 - 多字段模糊匹配（summary + description，相同关键字）
 # @ref login
-GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?fields=summary&fields=description&keyword=项目
+GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?summary=项目&description=项目
 Authorization: Bearer {{login.access_token}}
-Content-Type: application/json
 
-### 模糊搜索 - 多字段模糊匹配（location + organizer）
+### 模糊搜索 - 多字段模糊匹配（location + organizer，不同关键字）
 # @ref login
-GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?fields=location&fields=organizer&keyword=张三
+GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?location=会议室&organizer=张三
 Authorization: Bearer {{login.access_token}}
-Content-Type: application/json
 
 ### 模糊搜索 - JSONB 数组字段（categories）
 # @ref login
-GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?fields=categories&keyword=工作
+GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?categories=工作
 Authorization: Bearer {{login.access_token}}
-Content-Type: application/json
 
 ### 模糊搜索 - JSONB 数组字段（resources）
 # @ref login
-GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?fields=resources&keyword=投影
+GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?resources=投影
 Authorization: Bearer {{login.access_token}}
-Content-Type: application/json
 
-### 模糊搜索 - 多字段综合搜索（summary, description, location）
+### 模糊搜索 - 多字段综合搜索（summary, description, location，相同关键字）
 # @ref login
-GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?fields=summary,description,location&keyword=会议
+GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?summary=会议&description=会议&location=会议
 Authorization: Bearer {{login.access_token}}
-Content-Type: application/json
+
+### 模糊搜索 - 多字段综合搜索（不同关键字）
+# @ref login
+GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?summary=会议&description=讨论&location=北京
+Authorization: Bearer {{login.access_token}}
 
 ### 模糊搜索 - 边界情况：空字符串（应该返回错误）
 # @ref login
-GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?fields=summary&keyword=
+GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?summary=
 Authorization: Bearer {{login.access_token}}
-Content-Type: application/json
 
 ### 模糊搜索 - 边界情况：只有空格
 # @ref login
-GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?fields=summary&keyword=%20
+GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?summary=%20
 Authorization: Bearer {{login.access_token}}
-Content-Type: application/json
 
 ### 模糊搜索 - 边界情况：非常长的关键字
 # @ref login
-GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?fields=summary&keyword=这是一个非常长的搜索关键字用来测试系统对长文本的处理能力
+GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?summary=这是一个非常长的搜索关键字用来测试系统对长文本的处理能力
 Authorization: Bearer {{login.access_token}}
-Content-Type: application/json
 
 ### 模糊搜索 - 特殊字符测试（标点符号）
 # @ref login
-GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?fields=summary&keyword=会议！
+GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?summary=会议！
 Authorization: Bearer {{login.access_token}}
-Content-Type: application/json
 
 ### 模糊搜索 - SQL 注入防护测试（单引号）
 # @ref login
-GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?fields=summary&keyword=test'
+GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?summary=test'
 Authorization: Bearer {{login.access_token}}
-Content-Type: application/json
 
 ### 模糊搜索 - SQL 注入防护测试（分号）
 # @ref login
-GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?fields=summary&keyword=test;
+GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?summary=test;
 Authorization: Bearer {{login.access_token}}
-Content-Type: application/json
 
 ### 模糊搜索 - 性能测试：常见关键字
 # @ref login
-GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?fields=summary&keyword=的
+GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?summary=的
 Authorization: Bearer {{login.access_token}}
-Content-Type: application/json
 
 ### 模糊搜索 - 性能测试：罕见关键字
 # @ref login
-GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?fields=summary&keyword=xyz123abc
+GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?summary=xyz123abc
 Authorization: Bearer {{login.access_token}}
-Content-Type: application/json
 
-### 模糊搜索 - 多字段匹配优先级测试（所有字段都包含关键字）
+### 模糊搜索 - 多字段匹配优先级测试（所有字段都包含关键字，相同关键字）
 # @ref login
-GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?fields=summary,description,location&keyword=测试
+GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?summary=测试&description=测试&location=测试
 Authorization: Bearer {{login.access_token}}
-Content-Type: application/json
 
-### 模糊搜索 - 重复字段去重测试
+### 模糊搜索 - 多字段匹配优先级测试（所有字段都包含关键字，不同关键字）
 # @ref login
-GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?fields=summary&fields=summary&fields=location&keyword=会议
+GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?summary=测试&description=项目&location=北京
 Authorization: Bearer {{login.access_token}}
-Content-Type: application/json
-
-### 模糊搜索 - 混合格式测试（逗号分隔 + 多个同名参数）
-# @ref login
-GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?fields=summary,description&fields=location&keyword=项目
-Authorization: Bearer {{login.access_token}}
-Content-Type: application/json
 

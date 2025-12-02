@@ -31,4 +31,3 @@ func setupCalendarRoutes(api *gin.RouterGroup, opts *Options) {
 		}
 	}
 }
-

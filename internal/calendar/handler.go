@@ -46,7 +46,7 @@ func (h *Handler) getUserIDFromContext(c *gin.Context) (*uint, error) {
 
 // SearchCalendarItems 搜索日历项
 // GET /api/v1/calendar/items/search?fields=summary&fields=location&keyword=测试
-// 或者 GET /api/v1/calendar/items/search?fields=summary,location&keyword=测试
+// GET /api/v1/calendar/items/search?summary=会议&location=北京
 func (h *Handler) SearchCalendarItems(c *gin.Context) {
 	userID, err := h.getUserIDFromContext(c)
 	if err != nil {
@@ -54,50 +54,26 @@ func (h *Handler) SearchCalendarItems(c *gin.Context) {
 		return
 	}
 
-	var req SearchCalendarItemsRequest
-	
-	// 处理 fields 参数：支持两种格式
-	// 1. fields=summary&fields=location (多个同名参数)
-	// 2. fields=summary,location (逗号分隔)
-	fieldsParam := c.QueryArray("fields")
-	if len(fieldsParam) == 0 {
-		// 尝试逗号分隔的格式
-		fieldsStr := c.Query("fields")
-		if fieldsStr != "" {
-			fieldsParam = []string{fieldsStr}
+	// 从 Query 参数解析，格式：summary=会议&location=北京
+	// 只接受可搜索的字段作为参数名
+	fieldKeywords := make(map[string]string)
+
+	for key, values := range c.Request.URL.Query() {
+		// 检查是否是有效的搜索字段
+		field := SearchableField(key)
+		if field.IsValid() && len(values) > 0 && values[0] != "" {
+			fieldKeywords[key] = strings.TrimSpace(values[0])
 		}
 	}
-	
-	// 展开逗号分隔的字段
-	var fields []string
-	for _, f := range fieldsParam {
-		if f != "" {
-			// 如果包含逗号，则分割
-			if strings.Contains(f, ",") {
-				parts := strings.Split(f, ",")
-				for _, part := range parts {
-					part = strings.TrimSpace(part)
-					if part != "" {
-						fields = append(fields, part)
-					}
-				}
-			} else {
-				fields = append(fields, strings.TrimSpace(f))
-			}
-		}
-	}
-	
-	req.Fields = fields
-	req.Keyword = strings.TrimSpace(c.Query("keyword"))
-	
-	// 手动验证
-	if len(req.Fields) == 0 {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "fields 参数不能为空"})
+
+	// 验证
+	if len(fieldKeywords) == 0 {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "至少需要指定一个搜索字段"})
 		return
 	}
-	if req.Keyword == "" {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "keyword 参数不能为空"})
-		return
+
+	req := SearchCalendarItemsRequest{
+		FieldKeywords: fieldKeywords,
 	}
 
 	items, err := h.service.SearchCalendarItems(userID, &req)
@@ -264,4 +240,3 @@ func (h *Handler) ListCalendarItems(c *gin.Context) {
 
 	c.JSON(http.StatusOK, result)
 }
-

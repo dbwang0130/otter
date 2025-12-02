@@ -138,8 +138,7 @@ type CalendarItemListResponse struct {
 
 // SearchCalendarItemsRequest 搜索日历项请求
 type SearchCalendarItemsRequest struct {
-	Fields  []string `form:"fields" binding:"required,min=1,dive,oneof=summary description location organizer comment contact categories resources"`
-	Keyword string   `form:"keyword" binding:"required,min=1"`
+	FieldKeywords map[string]string `json:"field_keywords"`
 }
 
 // CreateValarmRequest 创建提醒请求
@@ -389,25 +388,23 @@ func (s *service) ListCalendarItems(userID *uint, req *ListCalendarItemsRequest)
 // SearchCalendarItems 搜索日历项（最多返回20条，按匹配程度排序）
 func (s *service) SearchCalendarItems(userID *uint, req *SearchCalendarItemsRequest) ([]*CalendarItem, error) {
 	// 验证搜索字段
-	if len(req.Fields) == 0 {
+	if len(req.FieldKeywords) == 0 {
 		return nil, fmt.Errorf("%w: 至少需要指定一个搜索字段", ErrInvalidInput)
 	}
 
-	// 验证每个字段是否有效，并去重
-	validFields := make([]string, 0, len(req.Fields))
-	fieldSet := make(map[string]bool)
+	// 验证每个字段是否有效，并过滤空关键字
+	validFieldKeywords := make(map[string]string)
 	invalidFields := make([]string, 0)
 
-	for _, fieldStr := range req.Fields {
+	for fieldStr, keyword := range req.FieldKeywords {
 		field := SearchableField(fieldStr)
 		if !field.IsValid() {
 			invalidFields = append(invalidFields, fieldStr)
 			continue
 		}
-		// 去重
-		if !fieldSet[fieldStr] {
-			validFields = append(validFields, fieldStr)
-			fieldSet[fieldStr] = true
+		// 过滤空关键字
+		if keyword != "" {
+			validFieldKeywords[fieldStr] = keyword
 		}
 	}
 
@@ -417,16 +414,11 @@ func (s *service) SearchCalendarItems(userID *uint, req *SearchCalendarItemsRequ
 	}
 
 	// 验证去重后是否还有有效字段
-	if len(validFields) == 0 {
-		return nil, fmt.Errorf("%w: 没有有效的搜索字段", ErrInvalidInput)
+	if len(validFieldKeywords) == 0 {
+		return nil, fmt.Errorf("%w: 没有有效的搜索字段或关键字", ErrInvalidInput)
 	}
 
-	// 验证关键字
-	if req.Keyword == "" {
-		return nil, fmt.Errorf("%w: 关键字不能为空", ErrInvalidInput)
-	}
-
-	items, err := s.repo.SearchCalendarItemsByKeyword(userID, validFields, req.Keyword)
+	items, err := s.repo.SearchCalendarItemsByFieldKeywords(userID, validFieldKeywords)
 	if err != nil {
 		return nil, fmt.Errorf("搜索日历项失败: %w", err)
 	}

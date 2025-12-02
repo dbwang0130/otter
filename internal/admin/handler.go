@@ -126,17 +126,3 @@ func (h *Handler) DeleteUser(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"message": "用户删除成功"})
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-

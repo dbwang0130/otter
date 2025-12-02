@@ -97,6 +97,14 @@ func (m *mockRepository) SearchCalendarItemsByKeyword(userID *uint, fields []str
 	return args.Get(0).([]*CalendarItem), args.Error(1)
 }
 
+func (m *mockRepository) SearchCalendarItemsByFieldKeywords(userID *uint, fieldKeywords map[string]string) ([]*CalendarItem, error) {
+	args := m.Called(userID, fieldKeywords)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]*CalendarItem), args.Error(1)
+}
+
 // TestService_CreateCalendarItem_Success 测试创建日历项成功
 func TestService_CreateCalendarItem_Success(t *testing.T) {
 	mockRepo := new(mockRepository)
@@ -694,8 +702,9 @@ func TestService_SearchCalendarItems_Success(t *testing.T) {
 	summary := "测试事件"
 	keyword := "测试"
 	req := &SearchCalendarItemsRequest{
-		Fields:  []string{"summary"},
-		Keyword: keyword,
+		FieldKeywords: map[string]string{
+			"summary": keyword,
+		},
 	}
 
 	expectedItems := []*CalendarItem{
@@ -707,7 +716,7 @@ func TestService_SearchCalendarItems_Success(t *testing.T) {
 		},
 	}
 
-	mockRepo.On("SearchCalendarItemsByKeyword", &userID, []string{"summary"}, keyword).Return(expectedItems, nil)
+	mockRepo.On("SearchCalendarItemsByFieldKeywords", &userID, map[string]string{"summary": keyword}).Return(expectedItems, nil)
 
 	items, err := service.SearchCalendarItems(&userID, req)
 
@@ -726,8 +735,10 @@ func TestService_SearchCalendarItems_MultipleFields(t *testing.T) {
 	location := "北京"
 	keyword := "测试"
 	req := &SearchCalendarItemsRequest{
-		Fields:  []string{"summary", "location"},
-		Keyword: keyword,
+		FieldKeywords: map[string]string{
+			"summary":  keyword,
+			"location": keyword,
+		},
 	}
 
 	expectedItems := []*CalendarItem{
@@ -740,7 +751,7 @@ func TestService_SearchCalendarItems_MultipleFields(t *testing.T) {
 		},
 	}
 
-	mockRepo.On("SearchCalendarItemsByKeyword", &userID, []string{"summary", "location"}, keyword).Return(expectedItems, nil)
+	mockRepo.On("SearchCalendarItemsByFieldKeywords", &userID, map[string]string{"summary": keyword, "location": keyword}).Return(expectedItems, nil)
 
 	items, err := service.SearchCalendarItems(&userID, req)
 
@@ -758,8 +769,10 @@ func TestService_SearchCalendarItems_DuplicateFields(t *testing.T) {
 	summary := "测试事件"
 	keyword := "测试"
 	req := &SearchCalendarItemsRequest{
-		Fields:  []string{"summary", "summary", "location"}, // 重复的 summary
-		Keyword: keyword,
+		FieldKeywords: map[string]string{
+			"summary":  keyword,
+			"location": keyword,
+		},
 	}
 
 	expectedItems := []*CalendarItem{
@@ -771,8 +784,8 @@ func TestService_SearchCalendarItems_DuplicateFields(t *testing.T) {
 		},
 	}
 
-	// 期望去重后的字段列表
-	mockRepo.On("SearchCalendarItemsByKeyword", &userID, []string{"summary", "location"}, keyword).Return(expectedItems, nil)
+	// map 自动去重，所以直接使用
+	mockRepo.On("SearchCalendarItemsByFieldKeywords", &userID, map[string]string{"summary": keyword, "location": keyword}).Return(expectedItems, nil)
 
 	items, err := service.SearchCalendarItems(&userID, req)
 
@@ -788,8 +801,9 @@ func TestService_SearchCalendarItems_InvalidField(t *testing.T) {
 
 	userID := uint(1)
 	req := &SearchCalendarItemsRequest{
-		Fields:  []string{"invalid_field"},
-		Keyword: "测试",
+		FieldKeywords: map[string]string{
+			"invalid_field": "测试",
+		},
 	}
 
 	_, err := service.SearchCalendarItems(&userID, req)
@@ -806,8 +820,7 @@ func TestService_SearchCalendarItems_EmptyFields(t *testing.T) {
 
 	userID := uint(1)
 	req := &SearchCalendarItemsRequest{
-		Fields:  []string{},
-		Keyword: "测试",
+		FieldKeywords: map[string]string{},
 	}
 
 	_, err := service.SearchCalendarItems(&userID, req)
@@ -824,8 +837,9 @@ func TestService_SearchCalendarItems_EmptyKeyword(t *testing.T) {
 
 	userID := uint(1)
 	req := &SearchCalendarItemsRequest{
-		Fields:  []string{"summary"},
-		Keyword: "",
+		FieldKeywords: map[string]string{
+			"summary": "",
+		},
 	}
 
 	_, err := service.SearchCalendarItems(&userID, req)
@@ -842,12 +856,13 @@ func TestService_SearchCalendarItems_RepositoryError(t *testing.T) {
 
 	userID := uint(1)
 	req := &SearchCalendarItemsRequest{
-		Fields:  []string{"summary"},
-		Keyword: "测试",
+		FieldKeywords: map[string]string{
+			"summary": "测试",
+		},
 	}
 
 	repoError := errors.New("数据库错误")
-	mockRepo.On("SearchCalendarItemsByKeyword", &userID, []string{"summary"}, "测试").Return(nil, repoError)
+	mockRepo.On("SearchCalendarItemsByFieldKeywords", &userID, map[string]string{"summary": "测试"}).Return(nil, repoError)
 
 	_, err := service.SearchCalendarItems(&userID, req)
 

@@ -557,8 +557,9 @@ func TestRepository_SearchCalendarItemsByKeyword_SingleField(t *testing.T) {
 	repo := NewRepository(db)
 
 	userID := uint(1)
-	fields := []string{"summary"}
-	keyword := "测试"
+	fieldKeywords := map[string]string{
+		"summary": "测试",
+	}
 	keywordPattern := "%测试%"
 
 	summary := "测试事件"
@@ -589,7 +590,7 @@ func TestRepository_SearchCalendarItemsByKeyword_SingleField(t *testing.T) {
 	mock.ExpectQuery(`SELECT \* FROM "valarms"`).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}))
 
-	items, err := repo.SearchCalendarItemsByKeyword(&userID, fields, keyword)
+	items, err := repo.SearchCalendarItemsByFieldKeywords(&userID, fieldKeywords)
 
 	assert.NoError(t, err)
 	assert.Len(t, items, 1)
@@ -603,8 +604,10 @@ func TestRepository_SearchCalendarItemsByKeyword_MultipleFields(t *testing.T) {
 	repo := NewRepository(db)
 
 	userID := uint(1)
-	fields := []string{"summary", "location"}
-	keyword := "测试"
+	fieldKeywords := map[string]string{
+		"summary":  "测试",
+		"location": "测试",
+	}
 	keywordPattern := "%测试%"
 
 	summary := "测试事件"
@@ -636,7 +639,7 @@ func TestRepository_SearchCalendarItemsByKeyword_MultipleFields(t *testing.T) {
 	mock.ExpectQuery(`SELECT \* FROM "valarms"`).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}))
 
-	items, err := repo.SearchCalendarItemsByKeyword(&userID, fields, keyword)
+	items, err := repo.SearchCalendarItemsByFieldKeywords(&userID, fieldKeywords)
 
 	assert.NoError(t, err)
 	assert.Len(t, items, 1)
@@ -651,9 +654,11 @@ func TestRepository_SearchCalendarItemsByKeyword_EmptyKeyword(t *testing.T) {
 	repo := NewRepository(db)
 
 	userID := uint(1)
-	fields := []string{"summary"}
+	fieldKeywords := map[string]string{
+		"summary": "",
+	}
 
-	items, err := repo.SearchCalendarItemsByKeyword(&userID, fields, "")
+	items, err := repo.SearchCalendarItemsByFieldKeywords(&userID, fieldKeywords)
 
 	assert.Error(t, err)
 	assert.Nil(t, items)
@@ -667,9 +672,9 @@ func TestRepository_SearchCalendarItemsByKeyword_EmptyFields(t *testing.T) {
 	repo := NewRepository(db)
 
 	userID := uint(1)
-	fields := []string{}
+	fieldKeywords := map[string]string{}
 
-	items, err := repo.SearchCalendarItemsByKeyword(&userID, fields, "测试")
+	items, err := repo.SearchCalendarItemsByFieldKeywords(&userID, fieldKeywords)
 
 	assert.Error(t, err)
 	assert.Nil(t, items)
@@ -683,9 +688,11 @@ func TestRepository_SearchCalendarItemsByKeyword_InvalidField(t *testing.T) {
 	repo := NewRepository(db)
 
 	userID := uint(1)
-	fields := []string{"invalid_field"}
+	fieldKeywords := map[string]string{
+		"invalid_field": "测试",
+	}
 
-	items, err := repo.SearchCalendarItemsByKeyword(&userID, fields, "测试")
+	items, err := repo.SearchCalendarItemsByFieldKeywords(&userID, fieldKeywords)
 
 	assert.Error(t, err)
 	assert.Nil(t, items)
@@ -699,8 +706,10 @@ func TestRepository_SearchCalendarItemsByKeyword_DuplicateFields(t *testing.T) {
 	repo := NewRepository(db)
 
 	userID := uint(1)
-	fields := []string{"summary", "summary", "location"} // 重复的 summary
-	keyword := "测试"
+	fieldKeywords := map[string]string{
+		"summary":  "测试",
+		"location": "测试",
+	}
 	keywordPattern := "%测试%"
 
 	summary := "测试事件"
@@ -723,7 +732,7 @@ func TestRepository_SearchCalendarItemsByKeyword_DuplicateFields(t *testing.T) {
 		nil, resourcesJSON, nil, nil, nil, nil, userID,
 	)
 
-	// 期望去重后的字段：summary 和 location，GORM 会自动添加 deleted_at IS NULL 和 LIMIT 条件
+	// map 自动去重，GORM 会自动添加 deleted_at IS NULL 和 LIMIT 条件
 	mock.ExpectQuery(`SELECT \* FROM "calendar_items"`).
 		WithArgs(userID, keywordPattern, keywordPattern, sqlmock.AnyArg()).
 		WillReturnRows(rows)
@@ -732,7 +741,7 @@ func TestRepository_SearchCalendarItemsByKeyword_DuplicateFields(t *testing.T) {
 	mock.ExpectQuery(`SELECT \* FROM "valarms"`).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}))
 
-	items, err := repo.SearchCalendarItemsByKeyword(&userID, fields, keyword)
+	items, err := repo.SearchCalendarItemsByFieldKeywords(&userID, fieldKeywords)
 
 	assert.NoError(t, err)
 	assert.Len(t, items, 1)
@@ -744,8 +753,9 @@ func TestRepository_SearchCalendarItemsByKeyword_NoUserID(t *testing.T) {
 	db, mock := setupTestDB(t)
 	repo := NewRepository(db)
 
-	fields := []string{"summary"}
-	keyword := "测试"
+	fieldKeywords := map[string]string{
+		"summary": "测试",
+	}
 	keywordPattern := "%测试%"
 
 	summary := "测试事件"
@@ -776,7 +786,7 @@ func TestRepository_SearchCalendarItemsByKeyword_NoUserID(t *testing.T) {
 	mock.ExpectQuery(`SELECT \* FROM "valarms"`).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}))
 
-	items, err := repo.SearchCalendarItemsByKeyword(nil, fields, keyword)
+	items, err := repo.SearchCalendarItemsByFieldKeywords(nil, fieldKeywords)
 
 	assert.NoError(t, err)
 	assert.Len(t, items, 1)
@@ -789,8 +799,9 @@ func TestRepository_SearchCalendarItemsByKeyword_JSONBFields(t *testing.T) {
 	repo := NewRepository(db)
 
 	userID := uint(1)
-	fields := []string{"categories"}
-	keyword := "工作"
+	fieldKeywords := map[string]string{
+		"categories": "工作",
+	}
 	keywordPattern := "%工作%"
 
 	summary := "测试事件"
@@ -821,7 +832,7 @@ func TestRepository_SearchCalendarItemsByKeyword_JSONBFields(t *testing.T) {
 	mock.ExpectQuery(`SELECT \* FROM "valarms"`).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}))
 
-	items, err := repo.SearchCalendarItemsByKeyword(&userID, fields, keyword)
+	items, err := repo.SearchCalendarItemsByFieldKeywords(&userID, fieldKeywords)
 
 	assert.NoError(t, err)
 	assert.Len(t, items, 1)

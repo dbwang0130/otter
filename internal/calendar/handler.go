@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -45,8 +46,11 @@ func (h *Handler) getUserIDFromContext(c *gin.Context) (*uint, error) {
 }
 
 // SearchCalendarItems 搜索日历项
-// GET /api/v1/calendar/items/search?fields=summary&fields=location&keyword=测试
 // GET /api/v1/calendar/items/search?summary=会议&location=北京
+// GET /api/v1/calendar/items/search?summary=会议&dtstart=2024-12-01T00:00:00Z,2024-12-31T23:59:59Z
+// GET /api/v1/calendar/items/search?dtstart=2024-12-01T00:00:00Z,2024-12-31T23:59:59Z (仅时间范围)
+// GET /api/v1/calendar/items/search?summary=会议&dtstart=2024-12-01T00:00:00Z, (只有开始时间)
+// GET /api/v1/calendar/items/search?summary=会议&dtstart=,2024-12-31T23:59:59Z (只有结束时间)
 func (h *Handler) SearchCalendarItems(c *gin.Context) {
 	userID, err := h.getUserIDFromContext(c)
 	if err != nil {
@@ -58,7 +62,18 @@ func (h *Handler) SearchCalendarItems(c *gin.Context) {
 	// 只接受可搜索的字段作为参数名
 	fieldKeywords := make(map[string]string)
 
+	// 支持的时间字段（需要跳过，不作为搜索字段）
+	timeFields := []string{"dtstart", "dtend", "due", "completed"}
+	timeFieldMap := make(map[string]bool)
+	for _, field := range timeFields {
+		timeFieldMap[field] = true
+	}
+
 	for key, values := range c.Request.URL.Query() {
+		// 跳过时间范围参数
+		if timeFieldMap[key] {
+			continue
+		}
 		// 检查是否是有效的搜索字段
 		field := SearchableField(key)
 		if field.IsValid() && len(values) > 0 && values[0] != "" {
@@ -66,14 +81,52 @@ func (h *Handler) SearchCalendarItems(c *gin.Context) {
 		}
 	}
 
-	// 验证
-	if len(fieldKeywords) == 0 {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "至少需要指定一个搜索字段"})
+	// 解析时间范围参数：支持多个时间字段的范围搜索
+	// 格式：dtstart=start,end 或 dtstart=start, 或 dtstart=,end
+	timeRanges := make(map[string]TimeRange)
+
+	for _, field := range timeFields {
+		timeRangeStr := c.Query(field)
+		if timeRangeStr == "" {
+			continue
+		}
+
+		// 解析 start,end 格式
+		parts := strings.Split(timeRangeStr, ",")
+		var start, end *time.Time
+
+		// 解析开始时间
+		if len(parts) > 0 && strings.TrimSpace(parts[0]) != "" {
+			if parsed, err := time.Parse(time.RFC3339, strings.TrimSpace(parts[0])); err == nil {
+				start = &parsed
+			}
+		}
+
+		// 解析结束时间
+		if len(parts) > 1 && strings.TrimSpace(parts[1]) != "" {
+			if parsed, err := time.Parse(time.RFC3339, strings.TrimSpace(parts[1])); err == nil {
+				end = &parsed
+			}
+		}
+
+		// 如果至少有一个时间值，则添加到时间范围
+		if start != nil || end != nil {
+			timeRanges[field] = TimeRange{
+				Start: start,
+				End:   end,
+			}
+		}
+	}
+
+	// 验证：至少需要指定一个搜索字段或时间范围
+	if len(fieldKeywords) == 0 && len(timeRanges) == 0 {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "至少需要指定一个搜索字段或时间范围"})
 		return
 	}
 
 	req := SearchCalendarItemsRequest{
 		FieldKeywords: fieldKeywords,
+		TimeRanges:    timeRanges,
 	}
 
 	items, err := h.service.SearchCalendarItems(userID, &req)

@@ -313,6 +313,51 @@ Authorization: Bearer {{login.access_token}}
 GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?summary=项目&description=进度&location=北京
 Authorization: Bearer {{login.access_token}}
 
+### 搜索日历项 - 仅时间范围（不指定关键字）
+# @ref login
+GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?dtstart=2024-12-01T00:00:00Z,2024-12-31T23:59:59Z
+Authorization: Bearer {{login.access_token}}
+
+### 搜索日历项 - 带时间范围（dtstart 完整范围）
+# @ref login
+GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?summary=会议&dtstart=2024-12-01T00:00:00Z,2024-12-31T23:59:59Z
+Authorization: Bearer {{login.access_token}}
+
+### 搜索日历项 - 带时间范围（dtstart 只有开始时间）
+# @ref login
+GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?summary=会议&dtstart=2024-12-01T00:00:00Z,
+Authorization: Bearer {{login.access_token}}
+
+### 搜索日历项 - 带时间范围（dtstart 只有结束时间）
+# @ref login
+GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?summary=会议&dtstart=,2024-12-31T23:59:59Z
+Authorization: Bearer {{login.access_token}}
+
+### 搜索日历项 - 带时间范围（dtend 完整范围）
+# @ref login
+GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?summary=会议&dtend=2024-12-01T00:00:00Z,2024-12-31T23:59:59Z
+Authorization: Bearer {{login.access_token}}
+
+### 搜索日历项 - 带时间范围（due 完整范围）
+# @ref login
+GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?summary=项目&due=2024-12-01T00:00:00Z,2024-12-31T23:59:59Z
+Authorization: Bearer {{login.access_token}}
+
+### 搜索日历项 - 带时间范围（completed 完整范围）
+# @ref login
+GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?summary=项目&completed=2024-12-01T00:00:00Z,2024-12-31T23:59:59Z
+Authorization: Bearer {{login.access_token}}
+
+### 搜索日历项 - 多时间范围组合（dtstart + due）
+# @ref login
+GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?summary=项目&dtstart=2024-12-01T00:00:00Z,2024-12-15T23:59:59Z&due=2024-12-20T00:00:00Z,2024-12-31T23:59:59Z
+Authorization: Bearer {{login.access_token}}
+
+### 搜索日历项 - 综合搜索（字段关键字 + 时间范围）
+# @ref login
+GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?summary=会议&location=北京&dtstart=2024-12-01T00:00:00Z,2024-12-31T23:59:59Z
+Authorization: Bearer {{login.access_token}}
+
 ### 搜索日历项 - 错误：缺少搜索参数
 # @ref login
 GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search
@@ -463,5 +508,59 @@ Authorization: Bearer {{login.access_token}}
 ### 模糊搜索 - 多字段匹配优先级测试（所有字段都包含关键字，不同关键字）
 # @ref login
 GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?summary=测试&description=项目&location=北京
+Authorization: Bearer {{login.access_token}}
+
+###############################################
+### Calendar Items 时间范围搜索测试
+###############################################
+
+### 时间范围搜索 - dtstart 完整范围
+# @ref login
+GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?summary=会议&dtstart=2024-12-01T00:00:00Z,2024-12-31T23:59:59Z
+Authorization: Bearer {{login.access_token}}
+
+### 时间范围搜索 - dtstart 只有开始时间（查找该时间之后的事件）
+# @ref login
+GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?summary=会议&dtstart=2024-12-15T00:00:00Z,
+Authorization: Bearer {{login.access_token}}
+
+### 时间范围搜索 - dtstart 只有结束时间（查找该时间之前的事件）
+# @ref login
+GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?summary=会议&dtstart=,2024-12-15T23:59:59Z
+Authorization: Bearer {{login.access_token}}
+
+### 时间范围搜索 - dtend 完整范围
+# @ref login
+GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?summary=会议&dtend=2024-12-01T00:00:00Z,2024-12-31T23:59:59Z
+Authorization: Bearer {{login.access_token}}
+
+### 时间范围搜索 - due 完整范围（待办事项截止时间）
+# @ref login
+GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?summary=项目&due=2024-12-01T00:00:00Z,2024-12-31T23:59:59Z
+Authorization: Bearer {{login.access_token}}
+
+### 时间范围搜索 - completed 完整范围（已完成时间）
+# @ref login
+GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?summary=项目&completed=2024-12-01T00:00:00Z,2024-12-31T23:59:59Z
+Authorization: Bearer {{login.access_token}}
+
+### 时间范围搜索 - 多时间字段组合（dtstart + dtend）
+# @ref login
+GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?summary=会议&dtstart=2024-12-01T00:00:00Z,2024-12-15T23:59:59Z&dtend=2024-12-10T00:00:00Z,2024-12-20T23:59:59Z
+Authorization: Bearer {{login.access_token}}
+
+### 时间范围搜索 - 多时间字段组合（dtstart + due）
+# @ref login
+GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?summary=项目&dtstart=2024-12-01T00:00:00Z,2024-12-15T23:59:59Z&due=2024-12-20T00:00:00Z,2024-12-31T23:59:59Z
+Authorization: Bearer {{login.access_token}}
+
+### 时间范围搜索 - 字段关键字 + 时间范围组合
+# @ref login
+GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?summary=会议&location=北京&dtstart=2024-12-01T00:00:00Z,2024-12-31T23:59:59Z
+Authorization: Bearer {{login.access_token}}
+
+### 时间范围搜索 - 多字段关键字 + 多时间范围组合
+# @ref login
+GET {{baseUrl}}/api/{{apiVersion}}/calendar/items/search?dtstart=2024-12-01T00:00:00Z,2024-12-15T23:59:59Z&due=2024-12-20T00:00:00Z,2024-12-31T23:59:59Z
 Authorization: Bearer {{login.access_token}}
 

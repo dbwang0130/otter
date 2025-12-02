@@ -136,9 +136,16 @@ type CalendarItemListResponse struct {
 	TotalPages int             `json:"total_pages"`
 }
 
+// TimeRange 时间范围
+type TimeRange struct {
+	Start *time.Time `json:"start"`
+	End   *time.Time `json:"end"`
+}
+
 // SearchCalendarItemsRequest 搜索日历项请求
 type SearchCalendarItemsRequest struct {
-	FieldKeywords map[string]string `json:"field_keywords"`
+	FieldKeywords map[string]string    `json:"field_keywords"`
+	TimeRanges    map[string]TimeRange `json:"time_ranges"` // key: dtstart, dtend, due, completed
 }
 
 // CreateValarmRequest 创建提醒请求
@@ -387,9 +394,9 @@ func (s *service) ListCalendarItems(userID *uint, req *ListCalendarItemsRequest)
 
 // SearchCalendarItems 搜索日历项（最多返回20条，按匹配程度排序）
 func (s *service) SearchCalendarItems(userID *uint, req *SearchCalendarItemsRequest) ([]*CalendarItem, error) {
-	// 验证搜索字段
-	if len(req.FieldKeywords) == 0 {
-		return nil, fmt.Errorf("%w: 至少需要指定一个搜索字段", ErrInvalidInput)
+	// 验证：至少需要指定一个搜索字段或时间范围
+	if len(req.FieldKeywords) == 0 && len(req.TimeRanges) == 0 {
+		return nil, fmt.Errorf("%w: 至少需要指定一个搜索字段或时间范围", ErrInvalidInput)
 	}
 
 	// 验证每个字段是否有效，并过滤空关键字
@@ -413,12 +420,12 @@ func (s *service) SearchCalendarItems(userID *uint, req *SearchCalendarItemsRequ
 		return nil, fmt.Errorf("%w: 无效的搜索字段: %v", ErrInvalidSearchField, invalidFields)
 	}
 
-	// 验证去重后是否还有有效字段
-	if len(validFieldKeywords) == 0 {
-		return nil, fmt.Errorf("%w: 没有有效的搜索字段或关键字", ErrInvalidInput)
+	// 如果指定了字段关键字但没有有效字段，且没有时间范围，则返回错误
+	if len(validFieldKeywords) == 0 && len(req.TimeRanges) == 0 {
+		return nil, fmt.Errorf("%w: 没有有效的搜索字段或关键字，或时间范围", ErrInvalidInput)
 	}
 
-	items, err := s.repo.SearchCalendarItemsByFieldKeywords(userID, validFieldKeywords)
+	items, err := s.repo.SearchCalendarItemsByFieldKeywords(userID, validFieldKeywords, req.TimeRanges)
 	if err != nil {
 		return nil, fmt.Errorf("搜索日历项失败: %w", err)
 	}

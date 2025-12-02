@@ -17,7 +17,7 @@ type Repository interface {
 	UpdateCalendarItem(item *CalendarItem) error
 	DeleteCalendarItem(id uint) error
 	ListCalendarItems(userID *uint, startTime, endTime *time.Time, itemType *CalendarItemType, offset, limit int) ([]*CalendarItem, int64, error)
-	SearchCalendarItemsByFieldKeywords(userID *uint, fieldKeywords map[string]string) ([]*CalendarItem, error)
+	SearchCalendarItemsByFieldKeywords(userID *uint, fieldKeywords map[string]string, timeRanges map[string]TimeRange) ([]*CalendarItem, error)
 
 	// Valarm 相关方法
 	CreateValarm(alarm *Valarm) error
@@ -157,9 +157,12 @@ func isValidSearchField(field string) bool {
 
 // SearchCalendarItemsByFieldKeywords 根据字段关键字映射搜索日历项（最多返回20条，按匹配程度排序）
 // 支持多个字段的 AND 搜索，每个字段匹配对应的关键字
-func (r *repository) SearchCalendarItemsByFieldKeywords(userID *uint, fieldKeywords map[string]string) ([]*CalendarItem, error) {
-	if len(fieldKeywords) == 0 {
-		return nil, fmt.Errorf("至少需要指定一个搜索字段")
+// 支持多个时间字段的范围过滤
+// 允许只有时间范围而没有字段关键字
+func (r *repository) SearchCalendarItemsByFieldKeywords(userID *uint, fieldKeywords map[string]string, timeRanges map[string]TimeRange) ([]*CalendarItem, error) {
+	// 验证：至少需要指定一个搜索字段或时间范围
+	if len(fieldKeywords) == 0 && len(timeRanges) == 0 {
+		return nil, fmt.Errorf("至少需要指定一个搜索字段或时间范围")
 	}
 
 	// 验证所有字段是否有效，并去重
@@ -183,9 +186,9 @@ func (r *repository) SearchCalendarItemsByFieldKeywords(userID *uint, fieldKeywo
 		return nil, fmt.Errorf("不支持的搜索字段: %v", invalidFields)
 	}
 
-	// 验证去重后是否还有有效字段
-	if len(validFieldKeywords) == 0 {
-		return nil, fmt.Errorf("没有有效的搜索字段")
+	// 如果指定了字段关键字但没有有效字段，且没有时间范围，则返回错误
+	if len(validFieldKeywords) == 0 && len(timeRanges) == 0 {
+		return nil, fmt.Errorf("没有有效的搜索字段或时间范围")
 	}
 
 	var items []*CalendarItem
@@ -194,6 +197,42 @@ func (r *repository) SearchCalendarItemsByFieldKeywords(userID *uint, fieldKeywo
 	// 过滤用户ID
 	if userID != nil {
 		query = query.Where("user_id = ?", *userID)
+	}
+
+	// 时间范围过滤：支持多个时间字段的范围搜索
+	// 字段名到数据库列名的映射
+	timeFieldColumnMap := map[string]string{
+		"dtstart":   "dt_start",
+		"dtend":     "dt_end",
+		"due":       "due",
+		"completed": "completed",
+	}
+
+	for field, timeRange := range timeRanges {
+		column, ok := timeFieldColumnMap[field]
+		if !ok {
+			continue // 跳过无效的时间字段
+		}
+
+		// 处理开始时间
+		if timeRange.Start != nil {
+			// 对于可空字段（dtend, due, completed），需要考虑 NULL 值
+			if field == "dtstart" {
+				query = query.Where(column+" >= ?", *timeRange.Start)
+			} else {
+				query = query.Where("("+column+" >= ? OR "+column+" IS NULL)", *timeRange.Start)
+			}
+		}
+
+		// 处理结束时间
+		if timeRange.End != nil {
+			// 对于可空字段（dtend, due, completed），需要考虑 NULL 值
+			if field == "dtstart" {
+				query = query.Where(column+" <= ?", *timeRange.End)
+			} else {
+				query = query.Where("("+column+" <= ? OR "+column+" IS NULL)", *timeRange.End)
+			}
+		}
 	}
 
 	// 构建 AND 条件：每个字段都必须匹配对应的关键字

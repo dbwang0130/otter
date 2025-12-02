@@ -7,6 +7,7 @@ import (
 	"math/big"
 
 	"github.com/galilio/otter/internal/auth"
+	"github.com/galilio/otter/internal/calendar"
 	"github.com/galilio/otter/internal/common/config"
 	"github.com/galilio/otter/internal/common/utils"
 	"github.com/galilio/otter/internal/user"
@@ -48,6 +49,8 @@ func Migrate(db *gorm.DB) error {
 	if err := db.AutoMigrate(
 		&user.User{},
 		&auth.RefreshToken{},
+		&calendar.CalendarItem{},
+		&calendar.Valarm{},
 	); err != nil {
 		return fmt.Errorf("自动迁移失败: %w", err)
 	}

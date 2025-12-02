@@ -2,6 +2,7 @@ package router
 
 import (
 	"github.com/galilio/otter/internal/auth"
+	"github.com/galilio/otter/internal/calendar"
 	"github.com/galilio/otter/internal/common/config"
 	"github.com/galilio/otter/internal/common/middleware"
 	"github.com/galilio/otter/internal/user"
@@ -11,6 +12,7 @@ import (
 // Options 路由选项
 type Options struct {
 	UserService      user.Service
+	CalendarService  calendar.Service
 	RefreshTokenRepo auth.RefreshTokenRepository
 	JWTConfig        *config.JWTConfig
 }
@@ -36,6 +38,13 @@ func WithRefreshTokenRepo(repo auth.RefreshTokenRepository) Option {
 func WithJWTConfig(jwtConfig *config.JWTConfig) Option {
 	return func(opts *Options) {
 		opts.JWTConfig = jwtConfig
+	}
+}
+
+// WithCalendarService 设置日历服务
+func WithCalendarService(calendarService calendar.Service) Option {
+	return func(opts *Options) {
+		opts.CalendarService = calendarService
 	}
 }
 
@@ -66,6 +75,7 @@ func NewRouter(opts ...Option) *gin.Engine {
 		setupUserRoutes(api, options)
 		setupAdminRoutes(api, options)
 		setupAgentRoutes(api, options)
+		setupCalendarRoutes(api, options)
 	}
 
 	return router

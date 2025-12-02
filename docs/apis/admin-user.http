@@ -1,0 +1,133 @@
+### 变量配置
+@baseUrl = http://localhost:8080
+@apiVersion = v1
+
+### 管理员登录（获取管理员 token）
+# 默认管理员凭据：
+# - 用户名: admin
+# - 密码: 随机生成（16位字符，包含大小写字母和数字）
+# - 邮箱: admin@example.com
+# 
+# ⚠️ 密码会在应用启动时的日志中输出，请查看日志获取密码
+# @name adminLogin
+POST {{baseUrl}}/api/{{apiVersion}}/auth/login
+Content-Type: application/json
+
+{
+  "username": "admin",
+  "password": "jv24zBzCVQ0GggA9"
+}
+
+### 创建用户
+# @ref adminLogin
+POST {{baseUrl}}/api/{{apiVersion}}/admin/users
+Authorization: Bearer {{adminLogin.access_token}}
+Content-Type: application/json
+
+{
+  "username": "newuser",
+  "email": "newuser@example.com",
+  "password": "password123",
+  "first_name": "新",
+  "last_name": "用户",
+  "phone": "13800138000"
+}
+
+### 创建用户（最小字段）
+# @ref adminLogin
+POST {{baseUrl}}/api/{{apiVersion}}/admin/users
+Authorization: Bearer {{adminLogin.access_token}}
+Content-Type: application/json
+
+{
+  "username": "minuser",
+  "email": "minuser@example.com",
+  "password": "password123"
+}
+
+### 获取用户列表（默认分页）
+# @ref adminLogin
+GET {{baseUrl}}/api/{{apiVersion}}/admin/users
+Authorization: Bearer {{adminLogin.access_token}}
+Content-Type: application/json
+
+### 获取用户列表（指定分页）
+# @ref adminLogin
+GET {{baseUrl}}/api/{{apiVersion}}/admin/users?page=1&page_size=20
+Authorization: Bearer {{adminLogin.access_token}}
+Content-Type: application/json
+
+### 获取用户列表（第二页）
+# @ref adminLogin
+GET {{baseUrl}}/api/{{apiVersion}}/admin/users?page=2&page_size=10
+Authorization: Bearer {{adminLogin.access_token}}
+Content-Type: application/json
+
+### 获取指定用户
+# @ref adminLogin
+GET {{baseUrl}}/api/{{apiVersion}}/admin/users/1
+Authorization: Bearer {{adminLogin.access_token}}
+Content-Type: application/json
+
+### 更新用户信息（全部字段）
+# @ref adminLogin
+PUT {{baseUrl}}/api/{{apiVersion}}/admin/users/1
+Authorization: Bearer {{adminLogin.access_token}}
+Content-Type: application/json
+
+{
+  "email": "updated@example.com",
+  "first_name": "更新",
+  "last_name": "姓名",
+  "phone": "13900139000",
+  "status": "active"
+}
+
+### 更新用户邮箱
+# @ref adminLogin
+PUT {{baseUrl}}/api/{{apiVersion}}/admin/users/1
+Authorization: Bearer {{adminLogin.access_token}}
+Content-Type: application/json
+
+{
+  "email": "newemail@example.com"
+}
+
+### 更新用户状态为禁用
+# @ref adminLogin
+PUT {{baseUrl}}/api/{{apiVersion}}/admin/users/1
+Authorization: Bearer {{adminLogin.access_token}}
+Content-Type: application/json
+
+{
+  "status": "inactive"
+}
+
+### 更新用户状态为启用
+# @ref adminLogin
+PUT {{baseUrl}}/api/{{apiVersion}}/admin/users/1
+Authorization: Bearer {{adminLogin.access_token}}
+Content-Type: application/json
+
+{
+  "status": "active"
+}
+
+### 更新用户姓名和电话
+# @ref adminLogin
+PUT {{baseUrl}}/api/{{apiVersion}}/admin/users/1
+Authorization: Bearer {{adminLogin.access_token}}
+Content-Type: application/json
+
+{
+  "first_name": "张",
+  "last_name": "三",
+  "phone": "13800138000"
+}
+
+### 删除用户（软删除）
+# @ref adminLogin
+DELETE {{baseUrl}}/api/{{apiVersion}}/admin/users/1
+Authorization: Bearer {{adminLogin.access_token}}
+Content-Type: application/json
+

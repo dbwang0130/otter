@@ -1,0 +1,70 @@
+### 变量配置
+@baseUrl = http://localhost:8080
+@apiVersion = v1
+
+### 用户登录（获取 token）
+# @name login
+POST {{baseUrl}}/api/{{apiVersion}}/auth/login
+Content-Type: application/json
+
+{
+  "username": "newuser",
+  "password": "password123"
+}
+
+### 获取当前用户信息
+# @ref login
+GET {{baseUrl}}/api/{{apiVersion}}/users/me
+Authorization: Bearer {{login.access_token}}
+Content-Type: application/json
+
+### 更新当前用户信息
+# @ref login
+PUT {{baseUrl}}/api/{{apiVersion}}/users/me
+Authorization: Bearer {{login.access_token}}
+Content-Type: application/json
+
+{
+  "email": "newemail@example.com",
+  "first_name": "张",
+  "last_name": "三",
+  "phone": "13800138000"
+}
+
+### 更新用户邮箱
+# @ref login
+PUT {{baseUrl}}/api/{{apiVersion}}/users/me
+Authorization: Bearer {{login.access_token}}
+Content-Type: application/json
+
+{
+  "email": "updated@example.com"
+}
+
+### 更新用户姓名
+# @ref login
+PUT {{baseUrl}}/api/{{apiVersion}}/users/me
+Authorization: Bearer {{login.access_token}}
+Content-Type: application/json
+
+{
+  "first_name": "李",
+  "last_name": "四"
+}
+
+### 更新用户电话
+# @ref login
+PUT {{baseUrl}}/api/{{apiVersion}}/users/me
+Authorization: Bearer {{login.access_token}}
+Content-Type: application/json
+
+{
+  "phone": "13900139000"
+}
+
+### 删除当前用户（软删除）
+# @ref login
+DELETE {{baseUrl}}/api/{{apiVersion}}/users/me
+Authorization: Bearer {{login.access_token}}
+Content-Type: application/json
+

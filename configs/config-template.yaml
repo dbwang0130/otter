@@ -1,0 +1,70 @@
+################################################################################
+# Otter Configuration File Template
+################################################################################
+#
+# This is a template configuration file for Otter.
+# 
+# Usage:
+#   1. Copy this file to `config.yaml` in the `configs/` directory
+#   2. Fill in the required values below
+#   3. Customize optional settings as needed
+#
+# Note: All configuration values are read from the YAML file.
+#       Environment variables are NOT supported.
+#
+################################################################################
+
+# ==============================================================================
+# Server Configuration
+# ==============================================================================
+# HTTP server settings
+server:
+  # Server port (required)
+  port: 8080
+
+  # Optional: Request/response timeouts
+  # read_timeout: 15s   # Maximum duration for reading the entire request (default: 15s)
+  # write_timeout: 15s  # Maximum duration before timing out writes of the response (default: 15s)
+  # idle_timeout: 60s   # Maximum amount of time to wait for the next request (default: 60s)
+
+# ==============================================================================
+# Database Configuration
+# ==============================================================================
+# PostgreSQL database connection settings
+database:
+  # Database connection URL (required)
+  # Format: postgres://user:password@host:port/dbname?sslmode=disable
+  url: postgres://postgres:postgres@localhost:5432/otter?sslmode=disable
+
+  # Optional: Connection pool settings
+  # max_open_conns: 25      # Maximum number of open connections (default: 25)
+  # max_idle_conns: 5       # Maximum number of idle connections (default: 5)
+  # conn_max_lifetime: 5m   # Maximum lifetime of a connection (default: 5m)
+
+# ==============================================================================
+# JWT Configuration
+# ==============================================================================
+# JSON Web Token settings for authentication
+jwt:
+  # Secret key for signing JWTs (required)
+  # WARNING: Use a strong random string in production!
+  secret: "<your-secret-key-here>"
+
+  # Token expiration times
+  expiration: 15m              # Access token expiration (default: 15m)
+  refresh_expiration: 168h     # Refresh token expiration (default: 168h = 7 days)
+
+# ==============================================================================
+# LLM Configuration
+# ==============================================================================
+# Large Language Model service settings
+llm:
+  deepseek:
+    # DeepSeek API configuration (all fields required)
+    api_key: ""                                    # Your DeepSeek API key
+    model: deepseek-chat                          # Model name (e.g., deepseek-chat)
+    base_url: "https://api.deepseek.com/v1"       # API base URL
+
+################################################################################
+# End of Configuration
+################################################################################

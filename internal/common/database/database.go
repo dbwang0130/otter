@@ -3,7 +3,7 @@ package database
 import (
 	"crypto/rand"
 	"fmt"
-	"log"
+	"log/slog"
 	"math/big"
 
 	"github.com/galilio/otter/internal/auth"
@@ -83,7 +83,7 @@ func createPartialUniqueIndexes(db *gorm.DB) error {
 
 	for _, sql := range dropIndexes {
 		if _, err := sqlDB.Exec(sql); err != nil {
-			log.Printf("警告: 删除索引失败（可能不存在）: %v", err)
+			slog.Debug("警告: 删除索引失败（可能不存在）", "error", err)
 		}
 	}
 
@@ -99,7 +99,7 @@ func createPartialUniqueIndexes(db *gorm.DB) error {
 		}
 	}
 
-	log.Println("部分唯一索引创建成功（允许软删除后重用用户名和邮箱）")
+	slog.Debug("部分唯一索引创建成功（允许软删除后重用用户名和邮箱）")
 	return nil
 }
 
@@ -131,7 +131,7 @@ func SeedAdminUser(db *gorm.DB) error {
 	}
 
 	if count > 0 {
-		log.Println("管理员用户已存在，跳过初始化")
+		slog.Debug("管理员用户已存在，跳过初始化")
 		return nil
 	}
 
@@ -166,13 +166,11 @@ func SeedAdminUser(db *gorm.DB) error {
 		return fmt.Errorf("创建默认管理员用户失败: %w", err)
 	}
 
-	log.Println("========================================")
-	log.Printf("默认管理员用户创建成功！")
-	log.Printf("用户名: %s", adminUsername)
-	log.Printf("密码: %s", adminPassword)
-	log.Printf("邮箱: %s", adminEmail)
-	log.Println("========================================")
-	log.Println("⚠️  请妥善保管密码，此密码仅显示一次！")
+	slog.Debug("========================================")
+	slog.Debug("默认管理员用户创建成功！")
+	slog.Debug("管理员信息", "username", adminUsername, "password", adminPassword, "email", adminEmail)
+	slog.Debug("========================================")
+	slog.Debug("⚠️  请妥善保管密码，此密码仅显示一次！")
 
 	return nil
 }

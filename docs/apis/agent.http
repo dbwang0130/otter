@@ -1,0 +1,41 @@
+### 变量配置
+@baseUrl = http://localhost:8081
+@appName = calendar_agent
+@userId = 2
+
+### 创建 Session
+# @name createSession
+POST {{baseUrl}}/api/apps/{{appName}}/users/{{userId}}/sessions
+Accept: application/json, text/plain, */*
+Connection: keep-alive
+
+### 运行 Agent (SSE)
+# @name runAgent
+# @ref createSession
+< {%
+  // 生成随机日期：月份 1-12，日期 1-28（避免月份天数问题）
+  const month = Math.floor(Math.random() * 12) + 1;
+  const day = Math.floor(Math.random() * 28) + 1;
+  client.global.set("randomDate", `${month}月${day}日`);
+%}
+
+POST {{baseUrl}}/api/run_sse
+Content-Type: application/json
+Accept: text/event-stream
+
+{
+  "appName": "{{appName}}",
+  "userId": "{{userId}}",
+  "sessionId": "{{createSession.id}}",
+  "newMessage": {
+    "role": "user",
+    "parts": [
+      {
+        "text": "{{randomDate}}下午4点，在会议室A，讨论项目进度和下一步计划"
+      }
+    ]
+  },
+  "streaming": false,
+  "stateDelta": null
+}
+

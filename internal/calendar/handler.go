@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/galilio/otter/internal/common/middleware"
 	"github.com/gin-gonic/gin"
 )
 
@@ -21,30 +22,6 @@ type ErrorResponse struct {
 	Error string `json:"error"`
 }
 
-// getUserIDFromContext 从上下文中获取用户ID
-func (h *Handler) getUserIDFromContext(c *gin.Context) (*uint, error) {
-	userID, exists := c.Get("user_id")
-	if !exists {
-		return nil, nil
-	}
-
-	var uid uint
-	switch v := userID.(type) {
-	case uint:
-		uid = v
-	case uint64:
-		uid = uint(v)
-	case int:
-		uid = uint(v)
-	case int64:
-		uid = uint(v)
-	default:
-		return nil, nil
-	}
-
-	return &uid, nil
-}
-
 // SearchCalendarItems 搜索日历项
 // GET /api/v1/calendar/items/search?summary=会议&location=北京
 // GET /api/v1/calendar/items/search?summary=会议&dtstart=2024-12-01T00:00:00Z,2024-12-31T23:59:59Z
@@ -52,43 +29,24 @@ func (h *Handler) getUserIDFromContext(c *gin.Context) (*uint, error) {
 // GET /api/v1/calendar/items/search?summary=会议&dtstart=2024-12-01T00:00:00Z, (只有开始时间)
 // GET /api/v1/calendar/items/search?summary=会议&dtstart=,2024-12-31T23:59:59Z (只有结束时间)
 func (h *Handler) SearchCalendarItems(c *gin.Context) {
-	userID, err := h.getUserIDFromContext(c)
+	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, ErrorResponse{Error: "未认证"})
 		return
 	}
 
-	// 从 Query 参数解析，格式：summary=会议&location=北京
-	// 只接受可搜索的字段作为参数名
-	fieldKeywords := make(map[string]string)
-
-	// 支持的时间字段（需要跳过，不作为搜索字段）
-	timeFields := []string{"dtstart", "dtend", "due", "completed"}
-	timeFieldMap := make(map[string]bool)
-	for _, field := range timeFields {
-		timeFieldMap[field] = true
-	}
-
-	for key, values := range c.Request.URL.Query() {
-		// 跳过时间范围参数
-		if timeFieldMap[key] {
-			continue
-		}
-		// 检查是否是有效的搜索字段
-		field := SearchableField(key)
-		if field.IsValid() && len(values) > 0 && values[0] != "" {
-			fieldKeywords[key] = strings.TrimSpace(values[0])
-		}
+	// 解析搜索关键字 q 参数
+	var q *string
+	if qStr := c.Query("q"); qStr != "" {
+		q = &qStr
 	}
 
 	// 解析时间范围参数：支持多个时间字段的范围搜索
 	// 格式：dtstart=start,end 或 dtstart=start, 或 dtstart=,end
-	timeRanges := make(map[string]TimeRange)
-
-	for _, field := range timeFields {
+	parseTimeRange := func(field string) *TimeRange {
 		timeRangeStr := c.Query(field)
 		if timeRangeStr == "" {
-			continue
+			return nil
 		}
 
 		// 解析 start,end 格式
@@ -109,24 +67,29 @@ func (h *Handler) SearchCalendarItems(c *gin.Context) {
 			}
 		}
 
-		// 如果至少有一个时间值，则添加到时间范围
+		// 如果至少有一个时间值，则返回时间范围
 		if start != nil || end != nil {
-			timeRanges[field] = TimeRange{
+			return &TimeRange{
 				Start: start,
 				End:   end,
 			}
 		}
-	}
 
-	// 验证：至少需要指定一个搜索字段或时间范围
-	if len(fieldKeywords) == 0 && len(timeRanges) == 0 {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "至少需要指定一个搜索字段或时间范围"})
-		return
+		return nil
 	}
 
 	req := SearchCalendarItemsRequest{
-		FieldKeywords: fieldKeywords,
-		TimeRanges:    timeRanges,
+		Q:         q,
+		DtStart:   parseTimeRange("dtstart"),
+		DtEnd:     parseTimeRange("dtend"),
+		Due:       parseTimeRange("due"),
+		Completed: parseTimeRange("completed"),
+	}
+
+	// 验证：至少需要指定搜索关键字或时间范围
+	if req.Q == nil && req.DtStart == nil && req.DtEnd == nil && req.Due == nil && req.Completed == nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "至少需要指定搜索关键字(q)或时间范围"})
+		return
 	}
 
 	items, err := h.service.SearchCalendarItems(userID, &req)
@@ -148,7 +111,7 @@ func (h *Handler) SearchCalendarItems(c *gin.Context) {
 // CreateCalendarItem 创建日历项
 // POST /api/v1/calendar/items
 func (h *Handler) CreateCalendarItem(c *gin.Context) {
-	userID, err := h.getUserIDFromContext(c)
+	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, ErrorResponse{Error: "未认证"})
 		return
@@ -176,6 +139,12 @@ func (h *Handler) CreateCalendarItem(c *gin.Context) {
 // GetCalendarItem 根据ID获取日历项
 // GET /api/v1/calendar/items/:id
 func (h *Handler) GetCalendarItem(c *gin.Context) {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, ErrorResponse{Error: "未认证"})
+		return
+	}
+
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
@@ -183,10 +152,14 @@ func (h *Handler) GetCalendarItem(c *gin.Context) {
 		return
 	}
 
-	item, err := h.service.GetCalendarItemByID(uint(id))
+	item, err := h.service.GetCalendarItemByID(userID, uint(id))
 	if err != nil {
 		if err == ErrCalendarItemNotFound {
 			c.JSON(http.StatusNotFound, ErrorResponse{Error: err.Error()})
+			return
+		}
+		if err == ErrForbidden {
+			c.JSON(http.StatusForbidden, ErrorResponse{Error: err.Error()})
 			return
 		}
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
@@ -199,16 +172,26 @@ func (h *Handler) GetCalendarItem(c *gin.Context) {
 // GetCalendarItemByUID 根据UID获取日历项
 // GET /api/v1/calendar/items/uid/:uid
 func (h *Handler) GetCalendarItemByUID(c *gin.Context) {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, ErrorResponse{Error: "未认证"})
+		return
+	}
+
 	uid := c.Param("uid")
 	if uid == "" {
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "UID不能为空"})
 		return
 	}
 
-	item, err := h.service.GetCalendarItemByUID(uid)
+	item, err := h.service.GetCalendarItemByUID(userID, uid)
 	if err != nil {
 		if err == ErrCalendarItemNotFound {
 			c.JSON(http.StatusNotFound, ErrorResponse{Error: err.Error()})
+			return
+		}
+		if err == ErrForbidden {
+			c.JSON(http.StatusForbidden, ErrorResponse{Error: err.Error()})
 			return
 		}
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
@@ -221,6 +204,12 @@ func (h *Handler) GetCalendarItemByUID(c *gin.Context) {
 // UpdateCalendarItem 更新日历项
 // PUT /api/v1/calendar/items/:id
 func (h *Handler) UpdateCalendarItem(c *gin.Context) {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, ErrorResponse{Error: "未认证"})
+		return
+	}
+
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
@@ -234,10 +223,14 @@ func (h *Handler) UpdateCalendarItem(c *gin.Context) {
 		return
 	}
 
-	item, err := h.service.UpdateCalendarItem(uint(id), &req)
+	item, err := h.service.UpdateCalendarItem(userID, uint(id), &req)
 	if err != nil {
 		if err == ErrCalendarItemNotFound || err == ErrInvalidInput {
 			c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+			return
+		}
+		if err == ErrForbidden {
+			c.JSON(http.StatusForbidden, ErrorResponse{Error: err.Error()})
 			return
 		}
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
@@ -250,6 +243,12 @@ func (h *Handler) UpdateCalendarItem(c *gin.Context) {
 // DeleteCalendarItem 删除日历项
 // DELETE /api/v1/calendar/items/:id
 func (h *Handler) DeleteCalendarItem(c *gin.Context) {
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, ErrorResponse{Error: "未认证"})
+		return
+	}
+
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
@@ -257,10 +256,14 @@ func (h *Handler) DeleteCalendarItem(c *gin.Context) {
 		return
 	}
 
-	err = h.service.DeleteCalendarItem(uint(id))
+	err = h.service.DeleteCalendarItem(userID, uint(id))
 	if err != nil {
 		if err == ErrCalendarItemNotFound {
 			c.JSON(http.StatusNotFound, ErrorResponse{Error: err.Error()})
+			return
+		}
+		if err == ErrForbidden {
+			c.JSON(http.StatusForbidden, ErrorResponse{Error: err.Error()})
 			return
 		}
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
@@ -273,7 +276,7 @@ func (h *Handler) DeleteCalendarItem(c *gin.Context) {
 // ListCalendarItems 列出日历项
 // GET /api/v1/calendar/items
 func (h *Handler) ListCalendarItems(c *gin.Context) {
-	userID, err := h.getUserIDFromContext(c)
+	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, ErrorResponse{Error: "未认证"})
 		return

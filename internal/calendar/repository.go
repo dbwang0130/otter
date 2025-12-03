@@ -2,6 +2,7 @@ package calendar
 
 import (
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -12,12 +13,12 @@ import (
 type Repository interface {
 	// CalendarItem 相关方法
 	CreateCalendarItem(item *CalendarItem) error
-	GetCalendarItemByID(id uint) (*CalendarItem, error)
-	GetCalendarItemByUID(uid string) (*CalendarItem, error)
-	UpdateCalendarItem(item *CalendarItem) error
-	DeleteCalendarItem(id uint) error
+	GetCalendarItemByID(userID *uint, id uint) (*CalendarItem, error)
+	GetCalendarItemByUID(userID *uint, uid string) (*CalendarItem, error)
+	UpdateCalendarItem(userID *uint, item *CalendarItem) error
+	DeleteCalendarItem(userID *uint, id uint) error
 	ListCalendarItems(userID *uint, startTime, endTime *time.Time, itemType *CalendarItemType, offset, limit int) ([]*CalendarItem, int64, error)
-	SearchCalendarItemsByFieldKeywords(userID *uint, fieldKeywords map[string]string, timeRanges map[string]TimeRange) ([]*CalendarItem, error)
+	SearchCalendarItems(userID *uint, q string, timeRanges map[string]TimeRange, limit int) ([]*CalendarItem, error)
 
 	// Valarm 相关方法
 	CreateValarm(alarm *Valarm) error
@@ -42,32 +43,108 @@ func (r *repository) CreateCalendarItem(item *CalendarItem) error {
 	return r.db.Create(item).Error
 }
 
-// GetCalendarItemByID 根据ID获取日历项
-func (r *repository) GetCalendarItemByID(id uint) (*CalendarItem, error) {
+// GetCalendarItemByID 根据ID获取日历项（带用户ID过滤）
+func (r *repository) GetCalendarItemByID(userID *uint, id uint) (*CalendarItem, error) {
 	var item CalendarItem
-	if err := r.db.Preload("Alarms").First(&item, id).Error; err != nil {
+	query := r.db.Preload("Alarms").Where("id = ?", id)
+
+	// 过滤用户ID
+	if userID != nil {
+		query = query.Where("user_id = ?", *userID)
+	}
+
+	if err := query.First(&item).Error; err != nil {
 		return nil, err
 	}
 	return &item, nil
 }
 
-// GetCalendarItemByUID 根据UID获取日历项
-func (r *repository) GetCalendarItemByUID(uid string) (*CalendarItem, error) {
+// GetCalendarItemByUID 根据UID获取日历项（带用户ID过滤）
+func (r *repository) GetCalendarItemByUID(userID *uint, uid string) (*CalendarItem, error) {
 	var item CalendarItem
-	if err := r.db.Preload("Alarms").Where("uid = ?", uid).First(&item).Error; err != nil {
+	query := r.db.Preload("Alarms").Where("uid = ?", uid)
+
+	// 过滤用户ID
+	if userID != nil {
+		query = query.Where("user_id = ?", *userID)
+	}
+
+	if err := query.First(&item).Error; err != nil {
 		return nil, err
 	}
 	return &item, nil
 }
 
-// UpdateCalendarItem 更新日历项
-func (r *repository) UpdateCalendarItem(item *CalendarItem) error {
-	return r.db.Save(item).Error
+// UpdateCalendarItem 更新日历项（带用户ID过滤）
+func (r *repository) UpdateCalendarItem(userID *uint, item *CalendarItem) error {
+	query := r.db.Model(&CalendarItem{}).Where("id = ?", item.ID)
+
+	// 过滤用户ID
+	if userID != nil {
+		query = query.Where("user_id = ?", *userID)
+	}
+
+	// 先检查是否存在（通过更新影响行数）
+	result := query.Updates(map[string]interface{}{
+		"summary":          item.Summary,
+		"description":      item.Description,
+		"location":         item.Location,
+		"organizer":        item.Organizer,
+		"dt_start":         item.DtStart,
+		"dt_end":           item.DtEnd,
+		"due":              item.Due,
+		"completed":        item.Completed,
+		"duration":         item.Duration,
+		"status":           item.Status,
+		"priority":         item.Priority,
+		"percent_complete": item.PercentComplete,
+		"rrule":            item.RRule,
+		"exdate":           item.ExDate,
+		"rdate":            item.RDate,
+		"categories":       item.Categories,
+		"comment":          item.Comment,
+		"contact":          item.Contact,
+		"related_to":       item.RelatedTo,
+		"resources":        item.Resources,
+		"url":              item.URL,
+		"class":            item.Class,
+		"raw_ical":         item.RawIcal,
+		"sequence":         item.Sequence,
+		"last_modified":    item.LastModified,
+	})
+
+	if result.Error != nil {
+		return result.Error
+	}
+
+	// 如果没有更新任何行，说明记录不存在或不属于该用户
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+
+	return nil
 }
 
-// DeleteCalendarItem 删除日历项（软删除）
-func (r *repository) DeleteCalendarItem(id uint) error {
-	return r.db.Delete(&CalendarItem{}, id).Error
+// DeleteCalendarItem 删除日历项（软删除，带用户ID过滤）
+func (r *repository) DeleteCalendarItem(userID *uint, id uint) error {
+	query := r.db.Model(&CalendarItem{}).Where("id = ?", id)
+
+	// 过滤用户ID
+	if userID != nil {
+		query = query.Where("user_id = ?", *userID)
+	}
+
+	result := query.Delete(&CalendarItem{})
+	if result.Error != nil {
+		return result.Error
+	}
+
+	// 如果没有删除任何行，说明记录不存在或不属于该用户
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+
+	return nil
 }
 
 // ListCalendarItems 列出日历项
@@ -149,58 +226,8 @@ func getFieldMatchScoreSQL(field string, keywordExact, keywordPrefix string) str
 	END`, column, keywordExact, column, keywordPrefix)
 }
 
-// isValidSearchField 验证搜索字段是否有效
-func isValidSearchField(field string) bool {
-	_, ok := fieldColumnMap[field]
-	return ok
-}
-
-// SearchCalendarItemsByFieldKeywords 根据字段关键字映射搜索日历项（最多返回20条，按匹配程度排序）
-// 支持多个字段的 AND 搜索，每个字段匹配对应的关键字
-// 支持多个时间字段的范围过滤
-// 允许只有时间范围而没有字段关键字
-func (r *repository) SearchCalendarItemsByFieldKeywords(userID *uint, fieldKeywords map[string]string, timeRanges map[string]TimeRange) ([]*CalendarItem, error) {
-	// 验证：至少需要指定一个搜索字段或时间范围
-	if len(fieldKeywords) == 0 && len(timeRanges) == 0 {
-		return nil, fmt.Errorf("至少需要指定一个搜索字段或时间范围")
-	}
-
-	// 验证所有字段是否有效，并去重
-	validFieldKeywords := make(map[string]string)
-	invalidFields := make([]string, 0)
-
-	for field, keyword := range fieldKeywords {
-		if !isValidSearchField(field) {
-			invalidFields = append(invalidFields, field)
-			continue
-		}
-
-		if keyword == "" {
-			return nil, fmt.Errorf("关键字不能为空")
-		}
-		validFieldKeywords[field] = keyword
-	}
-
-	// 如果有无效字段，返回错误
-	if len(invalidFields) > 0 {
-		return nil, fmt.Errorf("不支持的搜索字段: %v", invalidFields)
-	}
-
-	// 如果指定了字段关键字但没有有效字段，且没有时间范围，则返回错误
-	if len(validFieldKeywords) == 0 && len(timeRanges) == 0 {
-		return nil, fmt.Errorf("没有有效的搜索字段或时间范围")
-	}
-
-	var items []*CalendarItem
-	query := r.db.Model(&CalendarItem{})
-
-	// 过滤用户ID
-	if userID != nil {
-		query = query.Where("user_id = ?", *userID)
-	}
-
-	// 时间范围过滤：支持多个时间字段的范围搜索
-	// 字段名到数据库列名的映射
+// applyTimeRangeFilters 应用时间范围过滤
+func applyTimeRangeFilters(query *gorm.DB, timeRanges map[string]TimeRange) *gorm.DB {
 	timeFieldColumnMap := map[string]string{
 		"dtstart":   "dt_start",
 		"dtend":     "dt_end",
@@ -211,23 +238,19 @@ func (r *repository) SearchCalendarItemsByFieldKeywords(userID *uint, fieldKeywo
 	for field, timeRange := range timeRanges {
 		column, ok := timeFieldColumnMap[field]
 		if !ok {
-			continue // 跳过无效的时间字段
+			continue
 		}
 
-		// 处理开始时间
+		isDtStart := field == "dtstart"
 		if timeRange.Start != nil {
-			// 对于可空字段（dtend, due, completed），需要考虑 NULL 值
-			if field == "dtstart" {
+			if isDtStart {
 				query = query.Where(column+" >= ?", *timeRange.Start)
 			} else {
 				query = query.Where("("+column+" >= ? OR "+column+" IS NULL)", *timeRange.Start)
 			}
 		}
-
-		// 处理结束时间
 		if timeRange.End != nil {
-			// 对于可空字段（dtend, due, completed），需要考虑 NULL 值
-			if field == "dtstart" {
+			if isDtStart {
 				query = query.Where(column+" <= ?", *timeRange.End)
 			} else {
 				query = query.Where("("+column+" <= ? OR "+column+" IS NULL)", *timeRange.End)
@@ -235,52 +258,77 @@ func (r *repository) SearchCalendarItemsByFieldKeywords(userID *uint, fieldKeywo
 		}
 	}
 
-	// 构建 AND 条件：每个字段都必须匹配对应的关键字
-	for field, keyword := range validFieldKeywords {
-		column, ok := getFieldColumn(field)
-		if !ok {
-			// 理论上不会到达这里，因为已经验证过了，但为了安全起见保留
-			return nil, fmt.Errorf("不支持的搜索字段: %s", field)
+	return query
+}
+
+// applyFullTextSearch 应用全文搜索（在所有可搜索字段中搜索）
+// 在所有可搜索字段中使用 OR 连接，任一字段匹配即可
+func applyFullTextSearch(query *gorm.DB, q string) (*gorm.DB, error) {
+	if q == "" {
+		return query, nil
+	}
+
+	// 获取所有可搜索字段
+	var searchQueries []string
+	var args []interface{}
+
+	keywordEscaped := escapeSQLString(q)
+	keywordPattern := "%" + keywordEscaped + "%"
+
+	// 在所有可搜索字段中搜索
+	for field, column := range fieldColumnMap {
+		_ = field // 字段名用于文档，实际使用列名
+		searchQueries = append(searchQueries, column+" ILIKE ?")
+		args = append(args, keywordPattern)
+	}
+
+	if len(searchQueries) > 0 {
+		// 使用 OR 连接所有字段，任一字段匹配即可
+		query = query.Where("("+strings.Join(searchQueries, " OR ")+")", args...)
+	}
+
+	return query, nil
+}
+
+// buildOrderBy 构建排序表达式
+// 按开始时间（dtstart）升序排序
+func buildOrderBy(q string) string {
+	return "dt_start ASC"
+}
+
+// SearchCalendarItems 搜索日历项（按匹配程度排序）
+// q: 搜索关键字，在所有可搜索字段中搜索
+// 支持多个时间字段的范围过滤
+// 注意：此方法假设参数已经由Service层验证，不再进行重复验证
+func (r *repository) SearchCalendarItems(userID *uint, q string, timeRanges map[string]TimeRange, limit int) ([]*CalendarItem, error) {
+	// 构建基础查询
+	query := r.db.Model(&CalendarItem{})
+	if userID != nil {
+		query = query.Where("user_id = ?", *userID)
+	}
+
+	// 应用时间范围过滤
+	query = applyTimeRangeFilters(query, timeRanges)
+
+	// 应用全文搜索（如果有关键字）
+	if q != "" {
+		var err error
+		query, err = applyFullTextSearch(query, q)
+		if err != nil {
+			return nil, err
 		}
-
-		keywordEscaped := escapeSQLString(keyword)
-		keywordPattern := "%" + keywordEscaped + "%"
-		query = query.Where(column+" ILIKE ?", keywordPattern)
 	}
 
-	// 构建排序：按所有字段的平均匹配程度排序
-	var scoreExpressions []string
-	for field, keyword := range validFieldKeywords {
-		keywordEscaped := escapeSQLString(keyword)
-		keywordExact := keywordEscaped
-		keywordPrefix := keywordEscaped + "%"
-		scoreSQL := getFieldMatchScoreSQL(field, keywordExact, keywordPrefix)
-		if scoreSQL != "1" {
-			scoreExpressions = append(scoreExpressions, scoreSQL)
-		}
-	}
+	// 应用排序
+	query = query.Order(buildOrderBy(q))
 
-	var orderBy string
-	if len(scoreExpressions) == 1 {
-		// 单个字段，直接使用其匹配分数
-		orderBy = fmt.Sprintf("%s DESC", scoreExpressions[0])
-	} else if len(scoreExpressions) > 1 {
-		// 多个字段，使用平均匹配分数
-		avgScore := fmt.Sprintf("(%s) / %d", strings.Join(scoreExpressions, " + "), len(scoreExpressions))
-		orderBy = fmt.Sprintf("%s DESC", avgScore)
-	} else {
-		// 如果没有有效的排序表达式，使用默认排序
-		orderBy = "created_at DESC"
-	}
-
-	// 添加排序
-	query = query.Order(orderBy)
-
-	// 查询列表，最多返回20条
-	if err := query.Preload("Alarms").Limit(20).Find(&items).Error; err != nil {
+	// 执行查询
+	var items []*CalendarItem
+	if err := query.Limit(limit).Find(&items).Error; err != nil {
 		return nil, err
 	}
 
+	slog.Debug("SearchCalendarItems", "items_count", len(items))
 	return items, nil
 }
 

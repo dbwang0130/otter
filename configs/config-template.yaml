@@ -22,6 +22,9 @@ server:
   # Server port (required)
   port: 8080
 
+  # Agent server port (default: 8081)
+  # agent_port: 8081
+
   # Optional: Request/response timeouts
   # read_timeout: 15s   # Maximum duration for reading the entire request (default: 15s)
   # write_timeout: 15s  # Maximum duration before timing out writes of the response (default: 15s)
@@ -64,6 +67,24 @@ llm:
     api_key: ""                                    # Your DeepSeek API key
     model: deepseek-chat                          # Model name (e.g., deepseek-chat)
     base_url: "https://api.deepseek.com/v1"       # API base URL
+
+# ==============================================================================
+# Log Configuration
+# ==============================================================================
+log:
+  # Log level: debug, info, warn, error (default: info)
+  log_level: "info"
+  
+  # Log file path. If empty, logs will be written to stdout
+  # log_file: "logs/otter.log"
+  
+  # Log rotation settings (only applies when log_file is set)
+  # max_size: 100        # Maximum size of a log file in MB before rotation (default: 100)
+  # max_backups: 5       # Maximum number of old log files to retain (default: 5)
+  # max_age: 30         # Maximum number of days to retain old log files (default: 30)
+  # compress: true       # Whether to compress rotated log files (default: false)
+  # local_time: true     # Whether to use local time for rotated file names (default: false)
+
 
 ################################################################################
 # End of Configuration

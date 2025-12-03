@@ -7,10 +7,12 @@ import (
 	"github.com/galilio/otter/internal/common/middleware"
 	"github.com/galilio/otter/internal/user"
 	"github.com/gin-gonic/gin"
+	"google.golang.org/adk/session"
 )
 
 // Options 路由选项
 type Options struct {
+	SessionService   session.Service
 	UserService      user.Service
 	CalendarService  calendar.Service
 	RefreshTokenRepo auth.RefreshTokenRepository
@@ -57,7 +59,8 @@ func NewRouter(opts ...Option) *gin.Engine {
 
 	router := gin.New()
 
-	// 全局中间件
+	// 全局中间件（注意顺序：TraceID 应该在 Logger 之前）
+	router.Use(middleware.TraceID())
 	router.Use(middleware.Logger())
 	router.Use(middleware.Recovery())
 	router.Use(middleware.CORS())
@@ -74,8 +77,8 @@ func NewRouter(opts ...Option) *gin.Engine {
 		setupAuthRoutes(api, options)
 		setupUserRoutes(api, options)
 		setupAdminRoutes(api, options)
-		setupAgentRoutes(api, options)
 		setupCalendarRoutes(api, options)
+
 	}
 
 	return router

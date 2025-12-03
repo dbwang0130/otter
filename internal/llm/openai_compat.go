@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"iter"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -602,6 +603,7 @@ func (m *openAIModel) sendRequest(ctx context.Context, openaiReq *openAIRequest)
 	baseURL := strings.TrimSuffix(m.baseUrl, "/")
 	req, err := http.NewRequestWithContext(ctx, "POST", baseURL+"/chat/completions", bytes.NewReader(reqBody))
 	if err != nil {
+		slog.Error("failed to create HTTP request: ", "error", err)
 		return nil, fmt.Errorf("failed to create HTTP request: %w", err)
 	}
 
@@ -610,12 +612,15 @@ func (m *openAIModel) sendRequest(ctx context.Context, openaiReq *openAIRequest)
 
 	httpResp, err := m.httpClient.Do(req)
 	if err != nil {
+		slog.Error("failed to send request: ", "error", err)
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
 
 	if httpResp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(httpResp.Body)
 		httpResp.Body.Close()
+
+		slog.Error("API error: ", "status", httpResp.StatusCode, "body", string(body))
 		return nil, fmt.Errorf("API error: %d - %s", httpResp.StatusCode, string(body))
 	}
 
@@ -633,6 +638,7 @@ func (m *openAIModel) doRequest(ctx context.Context, openaiReq *openAIRequest) (
 	decoder := json.NewDecoder(httpResp.Body)
 	var openaiResp openAIResponse
 	if err := decoder.Decode(&openaiResp); err != nil {
+		slog.Error("failed to decode response: ", "error", err)
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
@@ -647,6 +653,7 @@ func (m *openAIModel) convertResponse(openaiResp *openAIResponse) (*model.LLMRes
 	choice := openaiResp.Choices[0]
 	msg := choice.Message
 	if msg == nil {
+		slog.Error("no message in response")
 		return nil, fmt.Errorf("no message in response")
 	}
 
@@ -679,6 +686,7 @@ func (m *openAIModel) convertResponse(openaiResp *openAIResponse) (*model.LLMRes
 	for _, tc := range toolCalls {
 		var args map[string]any
 		if err := json.Unmarshal([]byte(tc.Function.Arguments), &args); err != nil {
+			slog.Error("failed to unmarshal function arguments: ", "error", err)
 			return nil, fmt.Errorf("failed to unmarshal function arguments: %w", err)
 		}
 
@@ -709,6 +717,7 @@ func (m *openAIModel) buildFinalResponse(text string, toolCalls []openAIToolCall
 	for _, tc := range toolCalls {
 		var args map[string]any
 		if err := json.Unmarshal([]byte(tc.Function.Arguments), &args); err == nil {
+			slog.Error("failed to unmarshal function arguments: ", "error", err)
 			continue
 		}
 

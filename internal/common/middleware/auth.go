@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 
@@ -97,4 +98,28 @@ func IsAdmin(c *gin.Context) bool {
 	}
 	admin, ok := isAdmin.(bool)
 	return ok && admin
+}
+
+// GetUserIDFromContext 从上下文中获取用户ID，返回指针类型
+func GetUserIDFromContext(c *gin.Context) (*uint, error) {
+	userID, exists := c.Get("user_id")
+	if !exists {
+		return nil, errors.New("用户未认证")
+	}
+
+	var uid uint
+	switch v := userID.(type) {
+	case uint:
+		uid = v
+	case uint64:
+		uid = uint(v)
+	case int:
+		uid = uint(v)
+	case int64:
+		uid = uint(v)
+	default:
+		return nil, nil
+	}
+
+	return &uid, nil
 }

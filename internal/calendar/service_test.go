@@ -19,29 +19,29 @@ func (m *mockRepository) CreateCalendarItem(item *CalendarItem) error {
 	return args.Error(0)
 }
 
-func (m *mockRepository) GetCalendarItemByID(id uint) (*CalendarItem, error) {
-	args := m.Called(id)
+func (m *mockRepository) GetCalendarItemByID(userID *uint, id uint) (*CalendarItem, error) {
+	args := m.Called(userID, id)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
 	return args.Get(0).(*CalendarItem), args.Error(1)
 }
 
-func (m *mockRepository) GetCalendarItemByUID(uid string) (*CalendarItem, error) {
-	args := m.Called(uid)
+func (m *mockRepository) GetCalendarItemByUID(userID *uint, uid string) (*CalendarItem, error) {
+	args := m.Called(userID, uid)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
 	return args.Get(0).(*CalendarItem), args.Error(1)
 }
 
-func (m *mockRepository) UpdateCalendarItem(item *CalendarItem) error {
-	args := m.Called(item)
+func (m *mockRepository) UpdateCalendarItem(userID *uint, item *CalendarItem) error {
+	args := m.Called(userID, item)
 	return args.Error(0)
 }
 
-func (m *mockRepository) DeleteCalendarItem(id uint) error {
-	args := m.Called(id)
+func (m *mockRepository) DeleteCalendarItem(userID *uint, id uint) error {
+	args := m.Called(userID, id)
 	return args.Error(0)
 }
 
@@ -97,8 +97,8 @@ func (m *mockRepository) SearchCalendarItemsByKeyword(userID *uint, fields []str
 	return args.Get(0).([]*CalendarItem), args.Error(1)
 }
 
-func (m *mockRepository) SearchCalendarItemsByFieldKeywords(userID *uint, fieldKeywords map[string]string, timeRanges map[string]TimeRange) ([]*CalendarItem, error) {
-	args := m.Called(userID, fieldKeywords, timeRanges)
+func (m *mockRepository) SearchCalendarItems(userID *uint, q string, timeRanges map[string]TimeRange, limit int) ([]*CalendarItem, error) {
+	args := m.Called(userID, q, timeRanges, limit)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
@@ -116,7 +116,8 @@ func TestService_CreateCalendarItem_Success(t *testing.T) {
 	req := &CreateCalendarItemRequest{
 		Type:    CalendarItemTypeEvent,
 		Summary: &summary,
-		DtStart: now,
+		DtStart: &now,
+		DtEnd:   &now, // VEVENT 需要 dtend 或 duration
 	}
 
 	// 设置 mock 期望
@@ -149,7 +150,8 @@ func TestService_CreateCalendarItem_InvalidType(t *testing.T) {
 	now := time.Now()
 	req := &CreateCalendarItemRequest{
 		Type:    CalendarItemType("INVALID"),
-		DtStart: now,
+		DtStart: &now,
+		DtEnd:   &now, // VEVENT 需要 dtend 或 duration
 	}
 
 	item, err := service.CreateCalendarItem(&userID, req)
@@ -176,9 +178,11 @@ func TestService_GetCalendarItemByID_Success(t *testing.T) {
 		DtStart: now,
 	}
 
-	mockRepo.On("GetCalendarItemByID", itemID).Return(expectedItem, nil)
+	userID := uint(1)
+	expectedItem.UserID = &userID
+	mockRepo.On("GetCalendarItemByID", &userID, itemID).Return(expectedItem, nil)
 
-	item, err := service.GetCalendarItemByID(itemID)
+	item, err := service.GetCalendarItemByID(&userID, itemID)
 
 	assert.NoError(t, err)
 	assert.NotNil(t, item)
@@ -194,9 +198,10 @@ func TestService_GetCalendarItemByID_NotFound(t *testing.T) {
 
 	itemID := uint(999)
 
-	mockRepo.On("GetCalendarItemByID", itemID).Return(nil, errors.New("not found"))
+	userID := uint(1)
+	mockRepo.On("GetCalendarItemByID", &userID, itemID).Return(nil, errors.New("not found"))
 
-	item, err := service.GetCalendarItemByID(itemID)
+	item, err := service.GetCalendarItemByID(&userID, itemID)
 
 	assert.Error(t, err)
 	assert.Equal(t, ErrCalendarItemNotFound, err)
@@ -220,9 +225,11 @@ func TestService_GetCalendarItemByUID_Success(t *testing.T) {
 		DtStart: now,
 	}
 
-	mockRepo.On("GetCalendarItemByUID", uid).Return(expectedItem, nil)
+	userID := uint(1)
+	expectedItem.UserID = &userID
+	mockRepo.On("GetCalendarItemByUID", &userID, uid).Return(expectedItem, nil)
 
-	item, err := service.GetCalendarItemByUID(uid)
+	item, err := service.GetCalendarItemByUID(&userID, uid)
 
 	assert.NoError(t, err)
 	assert.NotNil(t, item)
@@ -247,22 +254,28 @@ func TestService_UpdateCalendarItem_Success(t *testing.T) {
 		DtStart: now,
 	}
 
+	userID := uint(1)
+	existingItem.UserID = &userID
 	req := &UpdateCalendarItemRequest{
 		Summary: &updatedSummary,
 	}
 
 	// 第一次调用：获取现有项
-	mockRepo.On("GetCalendarItemByID", itemID).Return(existingItem, nil)
+	mockRepo.On("GetCalendarItemByID", &userID, itemID).Return(existingItem, nil)
 	// 第二次调用：更新项
-	mockRepo.On("UpdateCalendarItem", mock.AnythingOfType("*calendar.CalendarItem")).
+	mockRepo.On("UpdateCalendarItem", &userID, mock.AnythingOfType("*calendar.CalendarItem")).
 		Return(nil).
 		Run(func(args mock.Arguments) {
-			item := args.Get(0).(*CalendarItem)
+			item := args.Get(1).(*CalendarItem)
 			assert.Equal(t, updatedSummary, *item.Summary)
 			assert.NotNil(t, item.LastModified)
 		})
+	// 第三次调用：获取更新后的项
+	updatedItem := *existingItem
+	updatedItem.Summary = &updatedSummary
+	mockRepo.On("GetCalendarItemByID", &userID, itemID).Return(&updatedItem, nil)
 
-	item, err := service.UpdateCalendarItem(itemID, req)
+	item, err := service.UpdateCalendarItem(&userID, itemID, req)
 
 	assert.NoError(t, err)
 	assert.NotNil(t, item)
@@ -275,12 +288,13 @@ func TestService_UpdateCalendarItem_NotFound(t *testing.T) {
 	mockRepo := new(mockRepository)
 	service := NewService(mockRepo)
 
+	userID := uint(1)
 	itemID := uint(999)
 	req := &UpdateCalendarItemRequest{}
 
-	mockRepo.On("GetCalendarItemByID", itemID).Return(nil, errors.New("not found"))
+	mockRepo.On("GetCalendarItemByID", &userID, itemID).Return(nil, errors.New("not found"))
 
-	item, err := service.UpdateCalendarItem(itemID, req)
+	item, err := service.UpdateCalendarItem(&userID, itemID, req)
 
 	assert.Error(t, err)
 	assert.Equal(t, ErrCalendarItemNotFound, err)
@@ -293,17 +307,18 @@ func TestService_DeleteCalendarItem_Success(t *testing.T) {
 	mockRepo := new(mockRepository)
 	service := NewService(mockRepo)
 
+	userID := uint(1)
 	itemID := uint(1)
 	existingItem := &CalendarItem{
-		ID:   itemID,
-		UID:  "test-uid-123",
-		Type: CalendarItemTypeEvent,
+		ID:     itemID,
+		UID:    "test-uid-123",
+		Type:   CalendarItemTypeEvent,
+		UserID: &userID,
 	}
 
-	mockRepo.On("GetCalendarItemByID", itemID).Return(existingItem, nil)
-	mockRepo.On("DeleteCalendarItem", itemID).Return(nil)
+	mockRepo.On("DeleteCalendarItem", &userID, itemID).Return(nil)
 
-	err := service.DeleteCalendarItem(itemID)
+	err := service.DeleteCalendarItem(&userID, itemID)
 
 	assert.NoError(t, err)
 	mockRepo.AssertExpectations(t)
@@ -314,11 +329,12 @@ func TestService_DeleteCalendarItem_NotFound(t *testing.T) {
 	mockRepo := new(mockRepository)
 	service := NewService(mockRepo)
 
+	userID := uint(1)
 	itemID := uint(999)
 
-	mockRepo.On("GetCalendarItemByID", itemID).Return(nil, errors.New("not found"))
+	mockRepo.On("DeleteCalendarItem", &userID, itemID).Return(errors.New("not found"))
 
-	err := service.DeleteCalendarItem(itemID)
+	err := service.DeleteCalendarItem(&userID, itemID)
 
 	assert.Error(t, err)
 	assert.Equal(t, ErrCalendarItemNotFound, err)
@@ -418,7 +434,7 @@ func TestService_CreateValarm_Success(t *testing.T) {
 		Type: CalendarItemTypeEvent,
 	}
 
-	mockRepo.On("GetCalendarItemByID", calendarItemID).Return(existingItem, nil)
+	mockRepo.On("GetCalendarItemByID", mock.AnythingOfType("*uint"), calendarItemID).Return(existingItem, nil)
 	mockRepo.On("CreateValarm", mock.AnythingOfType("*calendar.Valarm")).
 		Return(nil).
 		Run(func(args mock.Arguments) {
@@ -478,7 +494,7 @@ func TestService_CreateValarm_DisplayWithoutDescription(t *testing.T) {
 		Description: nil, // DISPLAY类型必须提供description
 	}
 
-	mockRepo.On("GetCalendarItemByID", calendarItemID).Return(existingItem, nil)
+	mockRepo.On("GetCalendarItemByID", mock.AnythingOfType("*uint"), calendarItemID).Return(existingItem, nil)
 
 	alarm, err := service.CreateValarm(calendarItemID, req)
 
@@ -505,7 +521,7 @@ func TestService_CreateValarm_InvalidAction(t *testing.T) {
 		Trigger: "-PT15M",
 	}
 
-	mockRepo.On("GetCalendarItemByID", calendarItemID).Return(existingItem, nil)
+	mockRepo.On("GetCalendarItemByID", mock.AnythingOfType("*uint"), calendarItemID).Return(existingItem, nil)
 
 	alarm, err := service.CreateValarm(calendarItemID, req)
 
@@ -586,7 +602,7 @@ func TestService_GetValarmsByCalendarItemID_Success(t *testing.T) {
 		Type: CalendarItemTypeEvent,
 	}
 
-	mockRepo.On("GetCalendarItemByID", calendarItemID).Return(existingItem, nil)
+	mockRepo.On("GetCalendarItemByID", mock.AnythingOfType("*uint"), calendarItemID).Return(existingItem, nil)
 	mockRepo.On("GetValarmsByCalendarItemID", calendarItemID).Return(alarms, nil)
 
 	result, err := service.GetValarmsByCalendarItemID(calendarItemID)
@@ -702,9 +718,7 @@ func TestService_SearchCalendarItems_Success(t *testing.T) {
 	summary := "测试事件"
 	keyword := "测试"
 	req := &SearchCalendarItemsRequest{
-		FieldKeywords: map[string]string{
-			"summary": keyword,
-		},
+		Q: &keyword,
 	}
 
 	expectedItems := []*CalendarItem{
@@ -716,7 +730,7 @@ func TestService_SearchCalendarItems_Success(t *testing.T) {
 		},
 	}
 
-	mockRepo.On("SearchCalendarItemsByFieldKeywords", &userID, map[string]string{"summary": keyword}, map[string]TimeRange(nil)).Return(expectedItems, nil)
+	mockRepo.On("SearchCalendarItems", &userID, keyword, map[string]TimeRange(nil), 20).Return(expectedItems, nil)
 
 	items, err := service.SearchCalendarItems(&userID, req)
 
@@ -725,8 +739,8 @@ func TestService_SearchCalendarItems_Success(t *testing.T) {
 	mockRepo.AssertExpectations(t)
 }
 
-// TestService_SearchCalendarItems_MultipleFields 测试多字段搜索
-func TestService_SearchCalendarItems_MultipleFields(t *testing.T) {
+// TestService_SearchCalendarItems_WithTimeRange 测试带时间范围的搜索
+func TestService_SearchCalendarItems_WithTimeRange(t *testing.T) {
 	mockRepo := new(mockRepository)
 	service := NewService(mockRepo)
 
@@ -734,10 +748,13 @@ func TestService_SearchCalendarItems_MultipleFields(t *testing.T) {
 	summary := "测试事件"
 	location := "北京"
 	keyword := "测试"
+	startTime := time.Now()
+	endTime := startTime.Add(24 * time.Hour)
 	req := &SearchCalendarItemsRequest{
-		FieldKeywords: map[string]string{
-			"summary":  keyword,
-			"location": keyword,
+		Q: &keyword,
+		DtStart: &TimeRange{
+			Start: &startTime,
+			End:   &endTime,
 		},
 	}
 
@@ -751,7 +768,13 @@ func TestService_SearchCalendarItems_MultipleFields(t *testing.T) {
 		},
 	}
 
-	mockRepo.On("SearchCalendarItemsByFieldKeywords", &userID, map[string]string{"summary": keyword, "location": keyword}, map[string]TimeRange(nil)).Return(expectedItems, nil)
+	timeRanges := map[string]TimeRange{
+		"dtstart": {
+			Start: &startTime,
+			End:   &endTime,
+		},
+	}
+	mockRepo.On("SearchCalendarItems", &userID, keyword, timeRanges, 20).Return(expectedItems, nil)
 
 	items, err := service.SearchCalendarItems(&userID, req)
 
@@ -760,18 +783,51 @@ func TestService_SearchCalendarItems_MultipleFields(t *testing.T) {
 	mockRepo.AssertExpectations(t)
 }
 
-// TestService_SearchCalendarItems_DuplicateFields 测试重复字段去重
-func TestService_SearchCalendarItems_DuplicateFields(t *testing.T) {
+// TestService_SearchCalendarItems_WithLimit 测试带数量限制的搜索
+func TestService_SearchCalendarItems_WithLimit(t *testing.T) {
 	mockRepo := new(mockRepository)
 	service := NewService(mockRepo)
 
 	userID := uint(1)
 	summary := "测试事件"
 	keyword := "测试"
+	limit := 10
 	req := &SearchCalendarItemsRequest{
-		FieldKeywords: map[string]string{
-			"summary":  keyword,
-			"location": keyword,
+		Q:     &keyword,
+		Limit: &limit,
+	}
+
+	expectedItems := []*CalendarItem{
+		{
+			ID:      1,
+			UID:     "test-uid-1",
+			Type:    CalendarItemTypeEvent,
+			Summary: &summary,
+		},
+	}
+
+	mockRepo.On("SearchCalendarItems", &userID, keyword, map[string]TimeRange(nil), limit).Return(expectedItems, nil)
+
+	items, err := service.SearchCalendarItems(&userID, req)
+
+	assert.NoError(t, err)
+	assert.Equal(t, expectedItems, items)
+	mockRepo.AssertExpectations(t)
+}
+
+// TestService_SearchCalendarItems_OnlyTimeRange 测试只有时间范围的搜索
+func TestService_SearchCalendarItems_OnlyTimeRange(t *testing.T) {
+	mockRepo := new(mockRepository)
+	service := NewService(mockRepo)
+
+	userID := uint(1)
+	summary := "测试事件"
+	startTime := time.Now()
+	endTime := startTime.Add(24 * time.Hour)
+	req := &SearchCalendarItemsRequest{
+		DtStart: &TimeRange{
+			Start: &startTime,
+			End:   &endTime,
 		},
 	}
 
@@ -784,8 +840,13 @@ func TestService_SearchCalendarItems_DuplicateFields(t *testing.T) {
 		},
 	}
 
-	// map 自动去重，所以直接使用
-	mockRepo.On("SearchCalendarItemsByFieldKeywords", &userID, map[string]string{"summary": keyword, "location": keyword}, map[string]TimeRange(nil)).Return(expectedItems, nil)
+	timeRanges := map[string]TimeRange{
+		"dtstart": {
+			Start: &startTime,
+			End:   &endTime,
+		},
+	}
+	mockRepo.On("SearchCalendarItems", &userID, "", timeRanges, 20).Return(expectedItems, nil)
 
 	items, err := service.SearchCalendarItems(&userID, req)
 
@@ -794,34 +855,13 @@ func TestService_SearchCalendarItems_DuplicateFields(t *testing.T) {
 	mockRepo.AssertExpectations(t)
 }
 
-// TestService_SearchCalendarItems_InvalidField 测试无效字段
-func TestService_SearchCalendarItems_InvalidField(t *testing.T) {
+// TestService_SearchCalendarItems_EmptyRequest 测试空请求
+func TestService_SearchCalendarItems_EmptyRequest(t *testing.T) {
 	mockRepo := new(mockRepository)
 	service := NewService(mockRepo)
 
 	userID := uint(1)
-	req := &SearchCalendarItemsRequest{
-		FieldKeywords: map[string]string{
-			"invalid_field": "测试",
-		},
-	}
-
-	_, err := service.SearchCalendarItems(&userID, req)
-
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), ErrInvalidSearchField.Error())
-	mockRepo.AssertExpectations(t)
-}
-
-// TestService_SearchCalendarItems_EmptyFields 测试空字段列表
-func TestService_SearchCalendarItems_EmptyFields(t *testing.T) {
-	mockRepo := new(mockRepository)
-	service := NewService(mockRepo)
-
-	userID := uint(1)
-	req := &SearchCalendarItemsRequest{
-		FieldKeywords: map[string]string{},
-	}
+	req := &SearchCalendarItemsRequest{}
 
 	_, err := service.SearchCalendarItems(&userID, req)
 
@@ -830,16 +870,15 @@ func TestService_SearchCalendarItems_EmptyFields(t *testing.T) {
 	mockRepo.AssertExpectations(t)
 }
 
-// TestService_SearchCalendarItems_EmptyKeyword 测试空关键字
-func TestService_SearchCalendarItems_EmptyKeyword(t *testing.T) {
+// TestService_SearchCalendarItems_EmptyQ 测试空关键字
+func TestService_SearchCalendarItems_EmptyQ(t *testing.T) {
 	mockRepo := new(mockRepository)
 	service := NewService(mockRepo)
 
 	userID := uint(1)
+	emptyQ := ""
 	req := &SearchCalendarItemsRequest{
-		FieldKeywords: map[string]string{
-			"summary": "",
-		},
+		Q: &emptyQ,
 	}
 
 	_, err := service.SearchCalendarItems(&userID, req)
@@ -855,14 +894,13 @@ func TestService_SearchCalendarItems_RepositoryError(t *testing.T) {
 	service := NewService(mockRepo)
 
 	userID := uint(1)
+	keyword := "测试"
 	req := &SearchCalendarItemsRequest{
-		FieldKeywords: map[string]string{
-			"summary": "测试",
-		},
+		Q: &keyword,
 	}
 
 	repoError := errors.New("数据库错误")
-	mockRepo.On("SearchCalendarItemsByFieldKeywords", &userID, map[string]string{"summary": "测试"}, map[string]TimeRange(nil)).Return(nil, repoError)
+	mockRepo.On("SearchCalendarItems", &userID, keyword, map[string]TimeRange(nil), 20).Return(nil, repoError)
 
 	_, err := service.SearchCalendarItems(&userID, req)
 

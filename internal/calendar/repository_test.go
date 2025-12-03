@@ -94,6 +94,7 @@ func TestRepository_GetCalendarItemByID_Success(t *testing.T) {
 	repo := NewRepository(db)
 
 	itemID := uint(1)
+	userID := uint(1)
 	now := time.Now()
 	summary := "测试事件"
 	exDateJSON, _ := json.Marshal([]string{})
@@ -112,18 +113,19 @@ func TestRepository_GetCalendarItemByID_Success(t *testing.T) {
 		itemID, now, now, nil, "test-uid-123", CalendarItemTypeEvent,
 		summary, nil, nil, nil, now, nil, nil, nil, nil, nil, nil, nil,
 		nil, nil, exDateJSON, nil, categoriesJSON, nil, nil, nil,
-		resourcesJSON, nil, nil, nil, nil, nil,
+		resourcesJSON, nil, nil, nil, nil, &userID,
 	)
 
 	mock.ExpectQuery(`SELECT \* FROM "calendar_items"`).
-		WithArgs(itemID, 1).
+		WithArgs(itemID, userID).
 		WillReturnRows(rows)
 
 	// Preload Alarms 查询（即使没有alarms也会查询）
 	mock.ExpectQuery(`SELECT \* FROM "valarms"`).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}))
 
-	item, err := repo.GetCalendarItemByID(itemID)
+	userID := uint(1)
+	item, err := repo.GetCalendarItemByID(&userID, itemID)
 
 	assert.NoError(t, err)
 	assert.NotNil(t, item)
@@ -139,12 +141,12 @@ func TestRepository_GetCalendarItemByID_NotFound(t *testing.T) {
 	repo := NewRepository(db)
 
 	itemID := uint(999)
+	userID := uint(1)
 
 	mock.ExpectQuery(`SELECT \* FROM "calendar_items"`).
-		WithArgs(itemID, 1).
+		WithArgs(itemID, userID).
 		WillReturnError(sql.ErrNoRows)
-
-	item, err := repo.GetCalendarItemByID(itemID)
+	item, err := repo.GetCalendarItemByID(&userID, itemID)
 
 	assert.Error(t, err)
 	assert.Nil(t, item)
@@ -177,15 +179,15 @@ func TestRepository_GetCalendarItemByUID_Success(t *testing.T) {
 		resourcesJSON, nil, nil, nil, nil, nil,
 	)
 
+	userID := uint(1)
 	mock.ExpectQuery(`SELECT \* FROM "calendar_items"`).
-		WithArgs(uid, 1).
+		WithArgs(uid, userID).
 		WillReturnRows(rows)
 
 	// Preload Alarms 查询
 	mock.ExpectQuery(`SELECT \* FROM "valarms"`).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}))
-
-	item, err := repo.GetCalendarItemByUID(uid)
+	item, err := repo.GetCalendarItemByUID(&userID, uid)
 
 	assert.NoError(t, err)
 	assert.NotNil(t, item)
@@ -199,12 +201,12 @@ func TestRepository_GetCalendarItemByUID_NotFound(t *testing.T) {
 	repo := NewRepository(db)
 
 	uid := "non-existent-uid"
+	userID := uint(1)
 
 	mock.ExpectQuery(`SELECT \* FROM "calendar_items"`).
-		WithArgs(uid, 1).
+		WithArgs(uid, userID).
 		WillReturnError(sql.ErrNoRows)
-
-	item, err := repo.GetCalendarItemByUID(uid)
+	item, err := repo.GetCalendarItemByUID(&userID, uid)
 
 	assert.Error(t, err)
 	assert.Nil(t, item)
@@ -265,7 +267,8 @@ func TestRepository_UpdateCalendarItem(t *testing.T) {
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
 
-	err := repo.UpdateCalendarItem(item)
+	userID := uint(1)
+	err := repo.UpdateCalendarItem(&userID, item)
 
 	assert.NoError(t, err)
 	assert.NoError(t, mock.ExpectationsWereMet())
@@ -284,7 +287,8 @@ func TestRepository_DeleteCalendarItem(t *testing.T) {
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
 
-	err := repo.DeleteCalendarItem(itemID)
+	userID := uint(1)
+	err := repo.DeleteCalendarItem(&userID, itemID)
 
 	assert.NoError(t, err)
 	assert.NoError(t, mock.ExpectationsWereMet())
@@ -557,9 +561,7 @@ func TestRepository_SearchCalendarItemsByKeyword_SingleField(t *testing.T) {
 	repo := NewRepository(db)
 
 	userID := uint(1)
-	fieldKeywords := map[string]string{
-		"summary": "测试",
-	}
+	q := "测试"
 	keywordPattern := "%测试%"
 
 	summary := "测试事件"
@@ -582,15 +584,16 @@ func TestRepository_SearchCalendarItemsByKeyword_SingleField(t *testing.T) {
 	)
 
 	// GORM 会自动添加 deleted_at IS NULL 和 LIMIT 条件
+	// 现在在所有可搜索字段中搜索，会有多个 OR 条件
 	mock.ExpectQuery(`SELECT \* FROM "calendar_items"`).
-		WithArgs(userID, keywordPattern, sqlmock.AnyArg()).
+		WithArgs(userID, sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg()).
 		WillReturnRows(rows)
 
 	// Preload Alarms 查询
 	mock.ExpectQuery(`SELECT \* FROM "valarms"`).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}))
 
-	items, err := repo.SearchCalendarItemsByFieldKeywords(&userID, fieldKeywords, nil)
+	items, err := repo.SearchCalendarItems(&userID, q, nil, 20)
 
 	assert.NoError(t, err)
 	assert.Len(t, items, 1)
@@ -598,20 +601,23 @@ func TestRepository_SearchCalendarItemsByKeyword_SingleField(t *testing.T) {
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
-// TestRepository_SearchCalendarItemsByKeyword_MultipleFields 测试多字段搜索
-func TestRepository_SearchCalendarItemsByKeyword_MultipleFields(t *testing.T) {
+// TestRepository_SearchCalendarItems_WithTimeRange 测试带时间范围的搜索
+func TestRepository_SearchCalendarItems_WithTimeRange(t *testing.T) {
 	db, mock := setupTestDB(t)
 	repo := NewRepository(db)
 
 	userID := uint(1)
-	fieldKeywords := map[string]string{
-		"summary":  "测试",
-		"location": "测试",
+	q := "测试"
+	startTime := time.Now()
+	endTime := startTime.Add(24 * time.Hour)
+	timeRanges := map[string]TimeRange{
+		"dtstart": {
+			Start: &startTime,
+			End:   &endTime,
+		},
 	}
-	keywordPattern := "%测试%"
 
 	summary := "测试事件"
-	location := "测试地点"
 	exDateJSON, _ := json.Marshal([]string{})
 	categoriesJSON, _ := json.Marshal([]string{})
 	resourcesJSON, _ := json.Marshal([]string{})
@@ -625,78 +631,77 @@ func TestRepository_SearchCalendarItemsByKeyword_MultipleFields(t *testing.T) {
 		"raw_ical", "user_id",
 	}).AddRow(
 		1, time.Now(), time.Now(), nil, "uid-1", CalendarItemTypeEvent,
-		summary, nil, location, nil, time.Now(), nil, nil, nil, nil, nil,
+		summary, nil, nil, nil, time.Now(), nil, nil, nil, nil, nil,
 		nil, nil, nil, nil, exDateJSON, nil, categoriesJSON, nil, nil,
 		nil, resourcesJSON, nil, nil, nil, nil, userID,
 	)
 
-	// 期望两个字段的 AND 条件，GORM 会自动添加 deleted_at IS NULL 和 LIMIT 条件
+	// GORM 会自动添加 deleted_at IS NULL 和 LIMIT 条件
 	mock.ExpectQuery(`SELECT \* FROM "calendar_items"`).
-		WithArgs(userID, keywordPattern, keywordPattern, sqlmock.AnyArg()).
+		WithArgs(userID, startTime, endTime, sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg()).
 		WillReturnRows(rows)
 
 	// Preload Alarms 查询
 	mock.ExpectQuery(`SELECT \* FROM "valarms"`).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}))
 
-	items, err := repo.SearchCalendarItemsByFieldKeywords(&userID, fieldKeywords, nil)
+	items, err := repo.SearchCalendarItems(&userID, q, timeRanges, 20)
 
 	assert.NoError(t, err)
 	assert.Len(t, items, 1)
 	assert.Equal(t, summary, *items[0].Summary)
-	assert.Equal(t, location, *items[0].Location)
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
-// TestRepository_SearchCalendarItemsByKeyword_EmptyKeyword 测试空关键字
-func TestRepository_SearchCalendarItemsByKeyword_EmptyKeyword(t *testing.T) {
+// TestRepository_SearchCalendarItems_OnlyTimeRange 测试只有时间范围的搜索
+func TestRepository_SearchCalendarItems_OnlyTimeRange(t *testing.T) {
 	db, mock := setupTestDB(t)
 	repo := NewRepository(db)
 
 	userID := uint(1)
-	fieldKeywords := map[string]string{
-		"summary": "",
+	q := ""
+	startTime := time.Now()
+	endTime := startTime.Add(24 * time.Hour)
+	timeRanges := map[string]TimeRange{
+		"dtstart": {
+			Start: &startTime,
+			End:   &endTime,
+		},
 	}
 
-	items, err := repo.SearchCalendarItemsByFieldKeywords(&userID, fieldKeywords, nil)
+	summary := "测试事件"
+	exDateJSON, _ := json.Marshal([]string{})
+	categoriesJSON, _ := json.Marshal([]string{})
+	resourcesJSON, _ := json.Marshal([]string{})
 
-	assert.Error(t, err)
-	assert.Nil(t, items)
-	assert.Contains(t, err.Error(), "关键字不能为空")
-	assert.NoError(t, mock.ExpectationsWereMet())
-}
+	rows := sqlmock.NewRows([]string{
+		"id", "created_at", "updated_at", "deleted_at", "uid", "type", "summary",
+		"description", "location", "organizer", "dtstart", "dtend", "due",
+		"completed", "duration", "status", "priority", "percent_complete",
+		"sequence", "rrule", "exdate", "rdate", "categories", "comment",
+		"contact", "related_to", "resources", "url", "class", "last_modified",
+		"raw_ical", "user_id",
+	}).AddRow(
+		1, time.Now(), time.Now(), nil, "uid-1", CalendarItemTypeEvent,
+		summary, nil, nil, nil, time.Now(), nil, nil, nil, nil, nil,
+		nil, nil, nil, nil, exDateJSON, nil, categoriesJSON, nil, nil,
+		nil, resourcesJSON, nil, nil, nil, nil, userID,
+	)
 
-// TestRepository_SearchCalendarItemsByKeyword_EmptyFields 测试空字段列表
-func TestRepository_SearchCalendarItemsByKeyword_EmptyFields(t *testing.T) {
-	db, mock := setupTestDB(t)
-	repo := NewRepository(db)
+	// GORM 会自动添加 deleted_at IS NULL 和 LIMIT 条件
+	mock.ExpectQuery(`SELECT \* FROM "calendar_items"`).
+		WithArgs(userID, startTime, endTime, sqlmock.AnyArg()).
+		WillReturnRows(rows)
 
-	userID := uint(1)
-	fieldKeywords := map[string]string{}
+	// Preload Alarms 查询
+	mock.ExpectQuery(`SELECT \* FROM "valarms"`).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}))
 
-	items, err := repo.SearchCalendarItemsByFieldKeywords(&userID, fieldKeywords, nil)
+	items, err := repo.SearchCalendarItems(&userID, q, timeRanges, 20)
 
-	assert.Error(t, err)
-	assert.Nil(t, items)
-	assert.Contains(t, err.Error(), "至少需要指定一个搜索字段")
-	assert.NoError(t, mock.ExpectationsWereMet())
-}
-
-// TestRepository_SearchCalendarItemsByKeyword_InvalidField 测试无效字段
-func TestRepository_SearchCalendarItemsByKeyword_InvalidField(t *testing.T) {
-	db, mock := setupTestDB(t)
-	repo := NewRepository(db)
-
-	userID := uint(1)
-	fieldKeywords := map[string]string{
-		"invalid_field": "测试",
-	}
-
-	items, err := repo.SearchCalendarItemsByFieldKeywords(&userID, fieldKeywords, nil)
-
-	assert.Error(t, err)
-	assert.Nil(t, items)
-	assert.Contains(t, err.Error(), "不支持的搜索字段")
+	assert.NoError(t, err)
+	assert.Len(t, items, 1)
+	assert.Equal(t, summary, *items[0].Summary)
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 

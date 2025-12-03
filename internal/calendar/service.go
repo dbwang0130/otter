@@ -3,6 +3,8 @@ package calendar
 import (
 	"errors"
 	"fmt"
+	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -15,6 +17,7 @@ var (
 	ErrInvalidType          = errors.New("无效的日历项类型")
 	ErrInvalidAction        = errors.New("无效的提醒动作类型")
 	ErrInvalidSearchField   = errors.New("无效的搜索字段")
+	ErrForbidden            = errors.New("无权访问该日历项")
 )
 
 // SearchableField 可搜索的字段
@@ -46,11 +49,11 @@ func (f SearchableField) IsValid() bool {
 // Service 日历服务接口
 type Service interface {
 	// CalendarItem 相关方法
-	CreateCalendarItem(userID *uint, req *CreateCalendarItemRequest) (*CalendarItem, error)
-	GetCalendarItemByID(id uint) (*CalendarItem, error)
-	GetCalendarItemByUID(uid string) (*CalendarItem, error)
-	UpdateCalendarItem(id uint, req *UpdateCalendarItemRequest) (*CalendarItem, error)
-	DeleteCalendarItem(id uint) error
+	CreateCalendarItem(userID *uint, req *CreateCalendarItemRequest) (*CreateCalendarItemResponse, error)
+	GetCalendarItemByID(userID *uint, id uint) (*CalendarItem, error)
+	GetCalendarItemByUID(userID *uint, uid string) (*CalendarItem, error)
+	UpdateCalendarItem(userID *uint, id uint, req *UpdateCalendarItemRequest) (*CalendarItem, error)
+	DeleteCalendarItem(userID *uint, id uint) error
 	ListCalendarItems(userID *uint, req *ListCalendarItemsRequest) (*CalendarItemListResponse, error)
 	SearchCalendarItems(userID *uint, req *SearchCalendarItemsRequest) ([]*CalendarItem, error)
 
@@ -63,16 +66,21 @@ type Service interface {
 }
 
 // CreateCalendarItemRequest 创建日历项请求
+// 根据 iCalendar 标准 (RFC 5545):
+// - VEVENT: DTSTART 必需，DTEND 或 DURATION 至少一个（但不能同时存在）
+// - VTODO: DTSTART 或 DUE 至少一个
+// - VJOURNAL: DTSTART 必需
+// - VFREEBUSY: DTSTART 和 DTEND 都必需
 type CreateCalendarItemRequest struct {
 	Type            CalendarItemType `json:"type" binding:"required,oneof=VEVENT VTODO VJOURNAL VFREEBUSY"`
 	Summary         *string          `json:"summary"`
 	Description     *string          `json:"description"`
 	Location        *string          `json:"location"`
 	Organizer       *string          `json:"organizer"`
-	DtStart         time.Time        `json:"dtstart" binding:"required"`
-	DtEnd           *time.Time       `json:"dtend"`
-	Due             *time.Time       `json:"due"`
-	Duration        *string          `json:"duration"`
+	DtStart         *time.Time       `json:"dtstart"`  // 根据类型可能必需
+	DtEnd           *time.Time       `json:"dtend"`    // VFREEBUSY 必需，VEVENT 与 DURATION 二选一
+	Due             *time.Time       `json:"due"`      // VTODO 可选（与 DTSTART 二选一）
+	Duration        *string          `json:"duration"` // VEVENT 可选（与 DTEND 二选一）
 	Status          *string          `json:"status"`
 	Priority        *int             `json:"priority" binding:"omitempty,gte=0,lte=9"`
 	PercentComplete *int             `json:"percent_complete" binding:"omitempty,gte=0,lte=100"`
@@ -88,6 +96,12 @@ type CreateCalendarItemRequest struct {
 	Class           *string          `json:"class"`
 	RawIcal         *string          `json:"raw_ical"`
 	Sequence        *int             `json:"sequence"`
+}
+
+type CreateCalendarItemResponse struct {
+	ID   uint             `json:"id"`
+	UID  string           `json:"uid"`
+	Type CalendarItemType `json:"type"`
 }
 
 // UpdateCalendarItemRequest 更新日历项请求
@@ -144,8 +158,20 @@ type TimeRange struct {
 
 // SearchCalendarItemsRequest 搜索日历项请求
 type SearchCalendarItemsRequest struct {
-	FieldKeywords map[string]string    `json:"field_keywords"`
-	TimeRanges    map[string]TimeRange `json:"time_ranges"` // key: dtstart, dtend, due, completed
+	// 搜索关键字：在所有可搜索字段中搜索（summary, description, location, organizer, comment, contact, categories, resources）
+	Q *string `json:"q,omitempty"`
+
+	// 开始时间范围过滤
+	DtStart *TimeRange `json:"dtstart,omitempty"`
+	// 结束时间范围过滤
+	DtEnd *TimeRange `json:"dtend,omitempty"`
+	// 截止时间范围过滤
+	Due *TimeRange `json:"due,omitempty"`
+	// 完成时间范围过滤
+	Completed *TimeRange `json:"completed,omitempty"`
+
+	// 返回结果数量限制，默认20，最大100
+	Limit *int `json:"limit,omitempty"`
 }
 
 // CreateValarmRequest 创建提醒请求
@@ -182,10 +208,17 @@ func NewService(repo Repository) Service {
 }
 
 // CreateCalendarItem 创建日历项
-func (s *service) CreateCalendarItem(userID *uint, req *CreateCalendarItemRequest) (*CalendarItem, error) {
+func (s *service) CreateCalendarItem(userID *uint, req *CreateCalendarItemRequest) (*CreateCalendarItemResponse, error) {
 	// 验证类型
 	if !isValidCalendarItemType(req.Type) {
+		slog.Error("无效的日历项类型", "type", req.Type)
 		return nil, ErrInvalidType
+	}
+
+	// 根据 iCalendar 标准验证必需字段
+	if err := validateCalendarItemRequest(req); err != nil {
+		slog.Error("创建日历校验未通过", "error", err)
+		return nil, err
 	}
 
 	// 生成 UID
@@ -199,7 +232,6 @@ func (s *service) CreateCalendarItem(userID *uint, req *CreateCalendarItemReques
 		Description:     req.Description,
 		Location:        req.Location,
 		Organizer:       req.Organizer,
-		DtStart:         req.DtStart,
 		DtEnd:           req.DtEnd,
 		Due:             req.Due,
 		Duration:        req.Duration,
@@ -220,6 +252,11 @@ func (s *service) CreateCalendarItem(userID *uint, req *CreateCalendarItemReques
 		UserID:          userID,
 	}
 
+	// 设置 DtStart（已验证不为空）
+	if req.DtStart != nil {
+		item.DtStart = *req.DtStart
+	}
+
 	now := time.Now()
 	item.LastModified = &now
 
@@ -227,12 +264,16 @@ func (s *service) CreateCalendarItem(userID *uint, req *CreateCalendarItemReques
 		return nil, fmt.Errorf("创建日历项失败: %w", err)
 	}
 
-	return item, nil
+	return &CreateCalendarItemResponse{
+		ID:   item.ID,
+		UID:  item.UID,
+		Type: item.Type,
+	}, nil
 }
 
 // GetCalendarItemByID 根据ID获取日历项
-func (s *service) GetCalendarItemByID(id uint) (*CalendarItem, error) {
-	item, err := s.repo.GetCalendarItemByID(id)
+func (s *service) GetCalendarItemByID(userID *uint, id uint) (*CalendarItem, error) {
+	item, err := s.repo.GetCalendarItemByID(userID, id)
 	if err != nil {
 		return nil, ErrCalendarItemNotFound
 	}
@@ -240,8 +281,8 @@ func (s *service) GetCalendarItemByID(id uint) (*CalendarItem, error) {
 }
 
 // GetCalendarItemByUID 根据UID获取日历项
-func (s *service) GetCalendarItemByUID(uid string) (*CalendarItem, error) {
-	item, err := s.repo.GetCalendarItemByUID(uid)
+func (s *service) GetCalendarItemByUID(userID *uint, uid string) (*CalendarItem, error) {
+	item, err := s.repo.GetCalendarItemByUID(userID, uid)
 	if err != nil {
 		return nil, ErrCalendarItemNotFound
 	}
@@ -249,8 +290,9 @@ func (s *service) GetCalendarItemByUID(uid string) (*CalendarItem, error) {
 }
 
 // UpdateCalendarItem 更新日历项
-func (s *service) UpdateCalendarItem(id uint, req *UpdateCalendarItemRequest) (*CalendarItem, error) {
-	item, err := s.repo.GetCalendarItemByID(id)
+func (s *service) UpdateCalendarItem(userID *uint, id uint, req *UpdateCalendarItemRequest) (*CalendarItem, error) {
+	// 先获取现有项（带用户ID过滤）
+	item, err := s.repo.GetCalendarItemByID(userID, id)
 	if err != nil {
 		return nil, ErrCalendarItemNotFound
 	}
@@ -341,24 +383,24 @@ func (s *service) UpdateCalendarItem(id uint, req *UpdateCalendarItemRequest) (*
 		}
 	}
 
-	if err := s.repo.UpdateCalendarItem(item); err != nil {
+	if err := s.repo.UpdateCalendarItem(userID, item); err != nil {
 		return nil, fmt.Errorf("更新日历项失败: %w", err)
 	}
 
-	return item, nil
+	// 重新获取更新后的项
+	updatedItem, err := s.repo.GetCalendarItemByID(userID, id)
+	if err != nil {
+		return nil, fmt.Errorf("获取更新后的日历项失败: %w", err)
+	}
+
+	return updatedItem, nil
 }
 
 // DeleteCalendarItem 删除日历项
-func (s *service) DeleteCalendarItem(id uint) error {
-	_, err := s.repo.GetCalendarItemByID(id)
-	if err != nil {
+func (s *service) DeleteCalendarItem(userID *uint, id uint) error {
+	if err := s.repo.DeleteCalendarItem(userID, id); err != nil {
 		return ErrCalendarItemNotFound
 	}
-
-	if err := s.repo.DeleteCalendarItem(id); err != nil {
-		return fmt.Errorf("删除日历项失败: %w", err)
-	}
-
 	return nil
 }
 
@@ -392,40 +434,49 @@ func (s *service) ListCalendarItems(userID *uint, req *ListCalendarItemsRequest)
 	}, nil
 }
 
-// SearchCalendarItems 搜索日历项（最多返回20条，按匹配程度排序）
+// SearchCalendarItems 搜索日历项（按匹配程度排序）
 func (s *service) SearchCalendarItems(userID *uint, req *SearchCalendarItemsRequest) ([]*CalendarItem, error) {
-	// 验证：至少需要指定一个搜索字段或时间范围
-	if len(req.FieldKeywords) == 0 && len(req.TimeRanges) == 0 {
-		return nil, fmt.Errorf("%w: 至少需要指定一个搜索字段或时间范围", ErrInvalidInput)
+	// 准备搜索关键字
+	var q string
+	if req.Q != nil {
+		q = strings.TrimSpace(*req.Q)
 	}
 
-	// 验证每个字段是否有效，并过滤空关键字
-	validFieldKeywords := make(map[string]string)
-	invalidFields := make([]string, 0)
+	// 收集时间范围
+	timeRanges := make(map[string]TimeRange)
+	if req.DtStart != nil {
+		timeRanges["dtstart"] = *req.DtStart
+	}
+	if req.DtEnd != nil {
+		timeRanges["dtend"] = *req.DtEnd
+	}
+	if req.Due != nil {
+		timeRanges["due"] = *req.Due
+	}
+	if req.Completed != nil {
+		timeRanges["completed"] = *req.Completed
+	}
 
-	for fieldStr, keyword := range req.FieldKeywords {
-		field := SearchableField(fieldStr)
-		if !field.IsValid() {
-			invalidFields = append(invalidFields, fieldStr)
-			continue
+	// 验证：至少需要指定搜索关键字或时间范围
+	if q == "" && len(timeRanges) == 0 {
+		return nil, fmt.Errorf("%w: 至少需要指定搜索关键字(q)或时间范围", ErrInvalidInput)
+	}
+
+	// 验证并设置返回数量限制
+	limit := 20 // 默认值
+	if req.Limit != nil {
+		if *req.Limit < 1 {
+			return nil, fmt.Errorf("%w: 返回数量限制必须大于0", ErrInvalidInput)
 		}
-		// 过滤空关键字
-		if keyword != "" {
-			validFieldKeywords[fieldStr] = keyword
+		if *req.Limit > 100 {
+			limit = 100 // 最大限制
+		} else {
+			limit = *req.Limit
 		}
 	}
 
-	// 如果有无效字段，返回错误
-	if len(invalidFields) > 0 {
-		return nil, fmt.Errorf("%w: 无效的搜索字段: %v", ErrInvalidSearchField, invalidFields)
-	}
-
-	// 如果指定了字段关键字但没有有效字段，且没有时间范围，则返回错误
-	if len(validFieldKeywords) == 0 && len(req.TimeRanges) == 0 {
-		return nil, fmt.Errorf("%w: 没有有效的搜索字段或关键字，或时间范围", ErrInvalidInput)
-	}
-
-	items, err := s.repo.SearchCalendarItemsByFieldKeywords(userID, validFieldKeywords, req.TimeRanges)
+	// 调用Repository层进行搜索
+	items, err := s.repo.SearchCalendarItems(userID, q, timeRanges, limit)
 	if err != nil {
 		return nil, fmt.Errorf("搜索日历项失败: %w", err)
 	}
@@ -435,8 +486,8 @@ func (s *service) SearchCalendarItems(userID *uint, req *SearchCalendarItemsRequ
 
 // CreateValarm 创建提醒
 func (s *service) CreateValarm(calendarItemID uint, req *CreateValarmRequest) (*Valarm, error) {
-	// 验证日历项是否存在
-	_, err := s.repo.GetCalendarItemByID(calendarItemID)
+	// 验证日历项是否存在（不验证用户ID，因为创建提醒时可能不需要用户验证）
+	_, err := s.repo.GetCalendarItemByID(nil, calendarItemID)
 	if err != nil {
 		return nil, ErrCalendarItemNotFound
 	}
@@ -484,8 +535,8 @@ func (s *service) GetValarmByID(id uint) (*Valarm, error) {
 
 // GetValarmsByCalendarItemID 根据日历项ID获取所有提醒
 func (s *service) GetValarmsByCalendarItemID(calendarItemID uint) ([]*Valarm, error) {
-	// 验证日历项是否存在
-	_, err := s.repo.GetCalendarItemByID(calendarItemID)
+	// 验证日历项是否存在（不验证用户ID，因为获取提醒时可能不需要用户验证）
+	_, err := s.repo.GetCalendarItemByID(nil, calendarItemID)
 	if err != nil {
 		return nil, ErrCalendarItemNotFound
 	}
@@ -563,4 +614,52 @@ func isValidCalendarItemType(t CalendarItemType) bool {
 // isValidValarmAction 验证提醒动作类型
 func isValidValarmAction(a ValarmAction) bool {
 	return a == ValarmActionDisplay || a == ValarmActionAudio || a == ValarmActionEmail
+}
+
+// validateCalendarItemRequest 根据 iCalendar 标准验证日历项请求
+// RFC 5545 要求：
+// - VEVENT: DTSTART 必需，DTEND 或 DURATION 至少一个（但不能同时存在）
+// - VTODO: DTSTART 或 DUE 至少一个
+// - VJOURNAL: DTSTART 必需
+// - VFREEBUSY: DTSTART 和 DTEND 都必需
+func validateCalendarItemRequest(req *CreateCalendarItemRequest) error {
+	switch req.Type {
+	case CalendarItemTypeEvent:
+		// VEVENT: DTSTART 必需
+		if req.DtStart == nil {
+			return fmt.Errorf("%w: VEVENT 类型需要 dtstart", ErrInvalidInput)
+		}
+		// DTEND 或 DURATION 至少一个，但不能同时存在
+		hasDtEnd := req.DtEnd != nil
+		hasDuration := req.Duration != nil && *req.Duration != ""
+		if !hasDtEnd && !hasDuration {
+			return fmt.Errorf("%w: VEVENT 类型需要 dtend 或 duration 至少一个", ErrInvalidInput)
+		}
+		if hasDtEnd && hasDuration {
+			return fmt.Errorf("%w: VEVENT 类型不能同时指定 dtend 和 duration", ErrInvalidInput)
+		}
+
+	case CalendarItemTypeTodo:
+		// VTODO: DTSTART 或 DUE 至少一个
+		if req.DtStart == nil && req.Due == nil {
+			return fmt.Errorf("%w: VTODO 类型需要 dtstart 或 due 至少一个", ErrInvalidInput)
+		}
+
+	case CalendarItemTypeJournal:
+		// VJOURNAL: DTSTART 必需
+		if req.DtStart == nil {
+			return fmt.Errorf("%w: VJOURNAL 类型需要 dtstart", ErrInvalidInput)
+		}
+
+	case CalendarItemTypeFreeBusy:
+		// VFREEBUSY: DTSTART 和 DTEND 都必需
+		if req.DtStart == nil {
+			return fmt.Errorf("%w: VFREEBUSY 类型需要 dtstart", ErrInvalidInput)
+		}
+		if req.DtEnd == nil {
+			return fmt.Errorf("%w: VFREEBUSY 类型需要 dtend", ErrInvalidInput)
+		}
+	}
+
+	return nil
 }

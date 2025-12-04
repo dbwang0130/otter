@@ -12,6 +12,11 @@ type Repository interface {
 	Update(user *User) error
 	Delete(id uint) error
 	List(offset, limit int) ([]*User, int64, error)
+
+	// UserProfile 相关方法
+	GetProfileByUserID(userID uint) (*UserProfile, error)
+	CreateOrUpdateProfile(profile *UserProfile) error
+	DeleteProfile(userID uint) error
 }
 
 type repository struct {
@@ -73,16 +78,31 @@ func (r *repository) List(offset, limit int) ([]*User, int64, error) {
 	return users, total, nil
 }
 
+// GetProfileByUserID 根据用户ID获取用户配置
+func (r *repository) GetProfileByUserID(userID uint) (*UserProfile, error) {
+	var profile UserProfile
+	if err := r.db.Where("user_id = ?", userID).First(&profile).Error; err != nil {
+		return nil, err
+	}
+	return &profile, nil
+}
 
+// CreateOrUpdateProfile 创建或更新用户配置
+func (r *repository) CreateOrUpdateProfile(profile *UserProfile) error {
+	var existing UserProfile
+	err := r.db.Where("user_id = ?", profile.UserID).First(&existing).Error
 
+	if err != nil {
+		// 不存在则创建
+		return r.db.Create(profile).Error
+	}
 
+	// 存在则更新
+	profile.ID = existing.ID
+	return r.db.Save(profile).Error
+}
 
-
-
-
-
-
-
-
-
-
+// DeleteProfile 删除用户配置
+func (r *repository) DeleteProfile(userID uint) error {
+	return r.db.Where("user_id = ?", userID).Delete(&UserProfile{}).Error
+}

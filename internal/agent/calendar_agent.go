@@ -10,6 +10,7 @@ import (
 	"github.com/galilio/otter/internal/calendar"
 	"github.com/galilio/otter/internal/common/config"
 	"github.com/galilio/otter/internal/llm"
+	"github.com/galilio/otter/internal/user"
 	adkagent "google.golang.org/adk/agent"
 	"google.golang.org/adk/agent/llmagent"
 	"google.golang.org/adk/cmd/launcher"
@@ -37,7 +38,10 @@ func WithCalendarService(service calendar.Service) Option {
 	}
 }
 
-func setupAgent(cfg *config.DeepSeekConfig, calendarService calendar.Service) (adkagent.Agent, error) {
+func setupAgent(cfg *config.DeepSeekConfig, calendarService calendar.Service, userService user.Service) (adkagent.Agent, error) {
+	// 设置用户服务，供 InstructionProvider 使用
+	SetUserService(userService)
+
 	model, err := llm.NewDeepSeekModel(cfg)
 	if err != nil {
 		slog.Error("Failed to create DeepSeek model", "error", err)
@@ -73,8 +77,8 @@ func isDevelopment() bool {
 	return env == "development" || env == "dev"
 }
 
-func Launch(ctx context.Context, cfg *config.DeepSeekConfig, calendarService calendar.Service) error {
-	otter, err := setupAgent(cfg, calendarService)
+func Launch(ctx context.Context, cfg *config.DeepSeekConfig, calendarService calendar.Service, userService user.Service) error {
+	otter, err := setupAgent(cfg, calendarService, userService)
 	if err != nil {
 		return err
 	}

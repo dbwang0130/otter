@@ -137,3 +137,81 @@ func (h *Handler) DeleteCurrentUser(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"message": "用户删除成功"})
 }
+
+// GetCurrentUserProfile 用户端：获取当前用户的配置
+func (h *Handler) GetCurrentUserProfile(c *gin.Context) {
+	userID, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, ErrorResponse{Error: "未认证"})
+		return
+	}
+
+	var uid uint
+	switch v := userID.(type) {
+	case uint:
+		uid = v
+	case uint64:
+		uid = uint(v)
+	case int:
+		uid = uint(v)
+	case int64:
+		uid = uint(v)
+	default:
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "无效的用户ID类型"})
+		return
+	}
+
+	profile, err := h.userService.GetUserProfile(uid)
+	if err != nil {
+		if err == ErrUserNotFound {
+			c.JSON(http.StatusNotFound, ErrorResponse{Error: err.Error()})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, profile)
+}
+
+// UpdateCurrentUserProfile 用户端：更新当前用户的配置
+func (h *Handler) UpdateCurrentUserProfile(c *gin.Context) {
+	userID, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, ErrorResponse{Error: "未认证"})
+		return
+	}
+
+	var uid uint
+	switch v := userID.(type) {
+	case uint:
+		uid = v
+	case uint64:
+		uid = uint(v)
+	case int:
+		uid = uint(v)
+	case int64:
+		uid = uint(v)
+	default:
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "无效的用户ID类型"})
+		return
+	}
+
+	var req UpdateUserProfileRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	profile, err := h.userService.UpdateUserProfile(uid, &req)
+	if err != nil {
+		if err == ErrUserNotFound {
+			c.JSON(http.StatusNotFound, ErrorResponse{Error: err.Error()})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, profile)
+}

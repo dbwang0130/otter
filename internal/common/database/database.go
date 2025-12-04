@@ -48,6 +48,7 @@ func Migrate(db *gorm.DB) error {
 	// 执行自动迁移
 	if err := db.AutoMigrate(
 		&user.User{},
+		&user.UserProfile{},
 		&auth.RefreshToken{},
 		&calendar.CalendarItem{},
 		&calendar.Valarm{},

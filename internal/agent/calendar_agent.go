@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	_ "embed"
 	"log/slog"
 	"os"
 	"strings"
@@ -38,21 +37,12 @@ func WithCalendarService(service calendar.Service) Option {
 	}
 }
 
-//go:embed prompts/calendar_agent.md
-var calendarInstruction string
-
 func setupAgent(cfg *config.DeepSeekConfig, calendarService calendar.Service) (adkagent.Agent, error) {
 	model, err := llm.NewDeepSeekModel(cfg)
 	if err != nil {
 		slog.Error("Failed to create DeepSeek model", "error", err)
 		return nil, err
 	}
-
-	instruction := calendarInstruction
-	if instruction == "" {
-		instruction = "You are a calendar agent that can help you manage your calendar and schedule your events."
-	}
-	slog.Debug("Agent instruction", "instruction", instruction)
 
 	ts := []tool.Tool{}
 	calendarTools, err := tools.NewCalendarTools(calendarService)
@@ -69,11 +59,11 @@ func setupAgent(cfg *config.DeepSeekConfig, calendarService calendar.Service) (a
 	ts = append(ts, timeTools...)
 
 	a, err := llmagent.New(llmagent.Config{
-		Name:        "calendar_agent",
-		Model:       model,
-		Description: "A calendar agent that can help you manage your calendar and schedule your events.",
-		Instruction: instruction,
-		Tools:       ts,
+		Name:                "calendar_agent",
+		Model:               model,
+		Description:         "A calendar agent that can help you manage your calendar and schedule your events.",
+		InstructionProvider: InstructionProvider, // 使用 InstructionProvider 替代静态 Instruction
+		Tools:               ts,
 	})
 	if err != nil {
 		slog.Error("Failed to create calendar agent", "error", err)

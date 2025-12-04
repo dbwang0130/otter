@@ -18,5 +18,10 @@ func setupUserRoutes(api *gin.RouterGroup, opts *Options) {
 		userAPI.GET("/me", userHandler.GetCurrentUser)
 		userAPI.PUT("/me", userHandler.UpdateCurrentUser)
 		userAPI.DELETE("/me", userHandler.DeleteCurrentUser)
+
+		// GET /api/v1/users/me/profile - 获取当前用户配置
+		// PUT /api/v1/users/me/profile - 更新当前用户配置
+		userAPI.GET("/me/profile", userHandler.GetCurrentUserProfile)
+		userAPI.PUT("/me/profile", userHandler.UpdateCurrentUserProfile)
 	}
 }

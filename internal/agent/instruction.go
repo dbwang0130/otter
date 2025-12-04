@@ -6,12 +6,22 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strconv"
 	"text/template"
 	"time"
 
+	"github.com/galilio/otter/internal/user"
 	adkagent "google.golang.org/adk/agent"
 	"gopkg.in/yaml.v3"
 )
+
+// userService 用户服务，用于获取用户配置
+var userService user.Service
+
+// SetUserService 设置用户服务
+func SetUserService(service user.Service) {
+	userService = service
+}
 
 //go:embed prompts/calendar_agent.md
 var calendarInstruction string
@@ -22,6 +32,7 @@ var charactersYAML string
 // Character 角色信息
 type Character struct {
 	Name          string    `yaml:"name"`
+	Code          string    `yaml:"code"` // 角色代号
 	Personality   string    `yaml:"personality"`
 	SpeakingStyle string    `yaml:"speaking_style"`
 	Examples      []Example `yaml:"examples"`
@@ -47,8 +58,8 @@ type instructionData struct {
 	Now           string
 }
 
-// loadCharacter 加载角色配置，默认返回第一个角色
-func loadCharacter() (*Character, error) {
+// loadCharactersConfig 加载所有角色配置
+func loadCharactersConfig() (*CharactersConfig, error) {
 	var config CharactersConfig
 	if err := yaml.Unmarshal([]byte(charactersYAML), &config); err != nil {
 		// 如果嵌入的文件为空，尝试从文件系统读取
@@ -57,15 +68,15 @@ func loadCharacter() (*Character, error) {
 			data, err := os.ReadFile(charPath)
 			if err != nil {
 				slog.Warn("Failed to read characters.yaml, using default", "error", err)
-				return nil, nil
+				return nil, err
 			}
 			if err := yaml.Unmarshal(data, &config); err != nil {
 				slog.Warn("Failed to parse characters.yaml, using default", "error", err)
-				return nil, nil
+				return nil, err
 			}
 		} else {
 			slog.Warn("Failed to parse embedded characters.yaml, using default", "error", err)
-			return nil, nil
+			return nil, err
 		}
 	}
 
@@ -74,8 +85,32 @@ func loadCharacter() (*Character, error) {
 		return nil, nil
 	}
 
-	// 默认使用第一个角色，后续可以根据用户选择或配置来选择
-	return &config.Characters[1], nil
+	return &config, nil
+}
+
+// loadCharacter 根据角色代号加载角色配置，如果 code 为空或未找到，返回第一个角色
+func loadCharacter(code string) (*Character, error) {
+	config, err := loadCharactersConfig()
+	if err != nil || config == nil {
+		return nil, err
+	}
+
+	// 如果提供了 code，尝试查找对应的角色
+	if code != "" {
+		for i := range config.Characters {
+			if config.Characters[i].Code == code {
+				return &config.Characters[i], nil
+			}
+		}
+		slog.Warn("Character not found by code, using default", "code", code)
+	}
+
+	// 如果未找到或 code 为空，返回第一个角色
+	if len(config.Characters) > 0 {
+		return &config.Characters[0], nil
+	}
+
+	return nil, nil
 }
 
 // InstructionProvider 动态生成 agent 指令，使用 Go template 替换占位符
@@ -93,10 +128,24 @@ func InstructionProvider(ctx adkagent.ReadonlyContext) (string, error) {
 		return instruction, err
 	}
 
-	// 加载角色数据
-	char, err := loadCharacter()
+	// 获取用户偏好角色代号
+	var characterCode string
+	if userService != nil {
+		userID, err := strconv.ParseUint(ctx.UserID(), 10, 64)
+		if err != nil {
+			userID = 2
+		}
+		profile, err := userService.GetUserProfile(uint(userID))
+		if err != nil {
+			characterCode = "default" // 默认角色
+		}
+		characterCode = profile.PreferredCharacterCode
+	}
+
+	// 根据角色代号加载角色数据
+	char, err := loadCharacter(characterCode)
 	if err != nil {
-		slog.Warn("Failed to load character, using default", "error", err)
+		slog.Warn("Failed to load character, using default", "error", err, "code", characterCode)
 	}
 
 	// 准备模板数据

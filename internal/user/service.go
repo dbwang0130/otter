@@ -21,6 +21,10 @@ type Service interface {
 	DeleteUser(id uint) error
 	ListUsers(page, pageSize int) (*UserListResponse, error)
 	Login(req *LoginRequest) (*User, error)
+
+	// UserProfile 相关方法
+	GetUserProfile(userID uint) (*UserProfile, error)
+	UpdateUserProfile(userID uint, req *UpdateUserProfileRequest) (*UserProfile, error)
 }
 
 type CreateUserRequest struct {
@@ -43,6 +47,10 @@ type UpdateUserRequest struct {
 	LastName  *string `json:"last_name" binding:"omitempty,max=100"`
 	Phone     *string `json:"phone" binding:"omitempty,max=20"`
 	Status    *string `json:"status" binding:"omitempty,oneof=active inactive"`
+}
+
+type UpdateUserProfileRequest struct {
+	PreferredCharacterCode *string `json:"preferred_character_code" binding:"omitempty,max=50"`
 }
 
 type UserListResponse struct {
@@ -199,4 +207,55 @@ func (s *service) Login(req *LoginRequest) (*User, error) {
 	}
 
 	return user, nil
+}
+
+// GetUserProfile 获取用户配置
+func (s *service) GetUserProfile(userID uint) (*UserProfile, error) {
+	// 验证用户是否存在
+	_, err := s.repo.GetByID(userID)
+	if err != nil {
+		return nil, ErrUserNotFound
+	}
+
+	profile, err := s.repo.GetProfileByUserID(userID)
+	if err != nil {
+		// 如果配置不存在，返回一个空的配置
+		return &UserProfile{
+			UserID:                 userID,
+			PreferredCharacterCode: "",
+		}, nil
+	}
+
+	return profile, nil
+}
+
+// UpdateUserProfile 更新用户配置
+func (s *service) UpdateUserProfile(userID uint, req *UpdateUserProfileRequest) (*UserProfile, error) {
+	// 验证用户是否存在
+	_, err := s.repo.GetByID(userID)
+	if err != nil {
+		return nil, ErrUserNotFound
+	}
+
+	// 获取现有配置或创建新配置
+	profile, err := s.repo.GetProfileByUserID(userID)
+	if err != nil {
+		// 配置不存在，创建新的
+		profile = &UserProfile{
+			UserID:                 userID,
+			PreferredCharacterCode: "",
+		}
+	}
+
+	// 更新字段
+	if req.PreferredCharacterCode != nil {
+		profile.PreferredCharacterCode = *req.PreferredCharacterCode
+	}
+
+	// 保存配置
+	if err := s.repo.CreateOrUpdateProfile(profile); err != nil {
+		return nil, fmt.Errorf("更新用户配置失败: %w", err)
+	}
+
+	return profile, nil
 }

@@ -106,30 +106,30 @@ type CreateCalendarItemResponse struct {
 
 // UpdateCalendarItemRequest 更新日历项请求
 type UpdateCalendarItemRequest struct {
-	Summary         *string    `json:"summary"`
-	Description     *string    `json:"description"`
-	Location        *string    `json:"location"`
-	Organizer       *string    `json:"organizer"`
-	DtStart         *time.Time `json:"dtstart"`
-	DtEnd           *time.Time `json:"dtend"`
-	Due             *time.Time `json:"due"`
-	Completed       *time.Time `json:"completed"`
-	Duration        *string    `json:"duration"`
-	Status          *string    `json:"status"`
+	Summary         *string    `json:"summary,omitempty"`
+	Description     *string    `json:"description,omitempty"`
+	Location        *string    `json:"location,omitempty"`
+	Organizer       *string    `json:"organizer,omitempty"`
+	DtStart         *time.Time `json:"dtstart,omitempty"`
+	DtEnd           *time.Time `json:"dtend,omitempty"`
+	Due             *time.Time `json:"due,omitempty"`
+	Completed       *time.Time `json:"completed,omitempty"`
+	Duration        *string    `json:"duration,omitempty"`
+	Status          *string    `json:"status,omitempty"`
 	Priority        *int       `json:"priority" binding:"omitempty,gte=0,lte=9"`
 	PercentComplete *int       `json:"percent_complete" binding:"omitempty,gte=0,lte=100"`
-	RRule           *string    `json:"rrule"`
+	RRule           *string    `json:"rrule,omitempty"`
 	ExDate          []string   `json:"exdate"`
-	RDate           []string   `json:"rdate"`
-	Categories      []string   `json:"categories"`
-	Comment         *string    `json:"comment"`
-	Contact         *string    `json:"contact"`
-	RelatedTo       *string    `json:"related_to"`
-	Resources       []string   `json:"resources"`
-	URL             *string    `json:"url"`
-	Class           *string    `json:"class"`
-	RawIcal         *string    `json:"raw_ical"`
-	Sequence        *int       `json:"sequence"`
+	RDate           []string   `json:"rdate,omitempty"`
+	Categories      []string   `json:"categories,omitempty"`
+	Comment         *string    `json:"comment,omitempty"`
+	Contact         *string    `json:"contact,omitempty"`
+	RelatedTo       *string    `json:"related_to,omitempty"`
+	Resources       []string   `json:"resources,omitempty"`
+	URL             *string    `json:"url,omitempty"`
+	Class           *string    `json:"class,omitempty"`
+	RawIcal         *string    `json:"raw_ical,omitempty"`
+	Sequence        *int       `json:"sequence,omitempty"`
 }
 
 // ListCalendarItemsRequest 列出日历项请求

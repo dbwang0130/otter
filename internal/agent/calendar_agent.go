@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/galilio/otter/internal/agent/tools"
+	calendartools "github.com/galilio/otter/internal/agent/tools/calendar"
 	"github.com/galilio/otter/internal/calendar"
 	"github.com/galilio/otter/internal/common/config"
 	"github.com/galilio/otter/internal/llm"
@@ -45,18 +45,12 @@ func setupAgent(cfg *config.DeepSeekConfig, calendarService calendar.Service) (a
 	}
 
 	ts := []tool.Tool{}
-	calendarTools, err := tools.NewCalendarTools(calendarService)
+	calendarTools, err := calendartools.SetupTools(calendarService)
 	if err != nil {
 		slog.Error("Failed to create calendar tools", "error", err)
 		return nil, err
 	}
 	ts = append(ts, calendarTools...)
-	timeTools, err := tools.NewTimeTools()
-	if err != nil {
-		slog.Error("Failed to create time tools", "error", err)
-		return nil, err
-	}
-	ts = append(ts, timeTools...)
 
 	a, err := llmagent.New(llmagent.Config{
 		Name:                "calendar_agent",
